@@ -1,8 +1,9 @@
-[package]
-name = "seed-bible-bots"
-version = "0.1.0"
-edition = "2024"
+[workspace]
+members = [
+    "crates/core",
+    "crates/sb-discord-bot"
+]
+resolver = "3"
 
-[dependencies]
-serenity = "0.12"
-tokio = { version = "1.21.2", features = ["macros", "rt-multi-thread"] }
+[workspace.dependencies]
+config = "0.15.19"
