@@ -1,5 +1,5 @@
-use std::sync::Arc;
 use serenity::{async_trait, prelude::TypeMapKey};
+use std::sync::Arc;
 
 #[async_trait]
 pub trait DailyCache: Send + Sync {}
@@ -7,6 +7,7 @@ pub trait DailyCache: Send + Sync {}
 #[async_trait]
 pub trait UserPref: Send + Sync {
     async fn get_user_translation(&self, user_id: String) -> String;
+    async fn set_user_translation(&self, user_id: String, translation_key: String);
 }
 
 #[async_trait]

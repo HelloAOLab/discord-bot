@@ -54,6 +54,30 @@ pub async fn open(
     Ok(())
 }
 
+#[poise::command(
+    slash_command,
+    description_localized(
+        "en-US",
+        "Set your personal default translation for commands that support it"
+    )
+)]
+pub async fn settranslation(
+    ctx: Context<'_>,
+    #[description = "Translation"] translation: String,
+) -> Result<(), Error> {
+    let user_id = ctx.author().id.to_string();
+    ctx.data()
+        .store
+        .set_user_translation(user_id, translation)
+        .await;
+    ctx.send(CreateReply {
+        content: Some("Translation set successfully!".into()),
+        ..Default::default()
+    })
+    .await?;
+    Ok(())
+}
+
 pub fn all_commands() -> Vec<poise::Command<Data, Error>> {
-    vec![help(), open()]
+    vec![help(), open(), settranslation()]
 }
