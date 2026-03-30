@@ -1,8 +1,10 @@
-use crate::commands::slash_commands::{self, Data};
+use std::sync::Arc;
+
+use crate::{commands::slash_commands::{self, Data}, store::store::Store};
 
 type Error = Box<dyn std::error::Error + Send + Sync>;
 
-pub async fn create_poise_framework() -> poise::Framework<Data, Error> {
+pub async fn create_poise_framework(store: Arc<dyn Store>) -> poise::Framework<Data, Error> {
     poise::Framework::builder()
         .options(poise::FrameworkOptions {
             commands: slash_commands::all_commands(),
@@ -15,7 +17,7 @@ pub async fn create_poise_framework() -> poise::Framework<Data, Error> {
         .setup(|ctx, _ready, framework| {
             Box::pin(async move {
                 poise::builtins::register_globally(ctx, &framework.options().commands).await?;
-                Ok(Data {})
+                Ok(Data { store })
             })
         })
         .build()

@@ -1,23 +1,13 @@
 use poise::CreateReply;
 use serenity::all::{Colour, CreateEmbed, CreateEmbedFooter};
 
-pub struct Data {}
+use crate::util::format::getPassageURL;
+
+pub struct Data {
+    pub store: std::sync::Arc<dyn crate::store::store::Store>,
+}
 type Error = Box<dyn std::error::Error + Send + Sync>;
 type Context<'a> = poise::Context<'a, Data, Error>;
-
-#[poise::command(slash_command, prefix_command, category = "General")]
-pub async fn ping(ctx: Context<'_>) -> Result<(), Error> {
-    ctx.send(CreateReply {
-        embeds: vec![
-            CreateEmbed::default()
-                .title("Pong!")
-                .description("`This is a response to the ping command.`"),
-        ],
-        ..Default::default()
-    })
-    .await?;
-    Ok(())
-}
 
 #[poise::command(
     slash_command,
@@ -40,6 +30,30 @@ pub async fn help(ctx: Context<'_>) -> Result<(), Error> {
     Ok(())
 }
 
+#[poise::command(
+    slash_command,
+    description_localized("en-US", "Open a passage at the given location ")
+)]
+pub async fn open(
+    ctx: Context<'_>,
+    #[description = "Book"] book: String,
+    #[description = "Chapter"] chapter: String,
+    #[description = "Translation"] translation: String,
+    #[description = "Language"] langauge: String,
+) -> Result<(), Error> {
+    ctx.send(CreateReply {
+        embeds: vec![CreateEmbed::default().title("Open").url(getPassageURL(
+            &book,
+            &chapter,
+            &translation,
+            &langauge,
+        ))],
+        ..Default::default()
+    })
+    .await?;
+    Ok(())
+}
+
 pub fn all_commands() -> Vec<poise::Command<Data, Error>> {
-    vec![ping(), help()]
+    vec![help(), open()]
 }

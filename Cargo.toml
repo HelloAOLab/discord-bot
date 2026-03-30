@@ -1,6 +1,7 @@
 [workspace]
 members = [
     "crates/core",
+    "crates/migration",
     "crates/sb-discord-bot"
 ]
 resolver = "3"
