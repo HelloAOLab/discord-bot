@@ -1,7 +1,7 @@
 use poise::CreateReply;
 use serenity::all::{Colour, CreateEmbed, CreateEmbedFooter};
 
-use crate::util::format::getPassageURL;
+use crate::util::format::get_passage_url;
 
 pub struct Data {
     pub store: std::sync::Arc<dyn crate::store::store::Store>,
@@ -42,7 +42,7 @@ pub async fn open(
     #[description = "Language"] langauge: String,
 ) -> Result<(), Error> {
     ctx.send(CreateReply {
-        embeds: vec![CreateEmbed::default().title("Open").url(getPassageURL(
+        embeds: vec![CreateEmbed::default().title("Open").url(get_passage_url(
             &book,
             &chapter,
             &translation,
