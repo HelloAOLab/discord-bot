@@ -9,9 +9,11 @@ impl MigratorTrait for Migrator {
             Box::new(m20260330_061253_create_user_prefs::Migration),
             Box::new(m20260330_063639_create_server_prefs::Migration),
             Box::new(m20260330_064340_create_translation_support::Migration),
+            Box::new(m20260331_171609_create_kv::Migration),
         ]
     }
 }
 mod m20260330_061253_create_user_prefs;
 mod m20260330_063639_create_server_prefs;
 mod m20260330_064340_create_translation_support;
+mod m20260331_171609_create_kv;
