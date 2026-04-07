@@ -6,3 +6,4 @@ pub mod entity {
     pub mod translations;
     pub mod user_prefs;
 }
+pub mod valid_cache;

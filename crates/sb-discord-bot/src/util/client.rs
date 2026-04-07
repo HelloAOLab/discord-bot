@@ -1,4 +1,4 @@
-use crate::{commands::slash_commands::Data, handler::handler::Handler};
+use crate::{handler::handler::Handler, poise_impl::data::Data};
 use poise::Framework;
 use serenity::{Client, all::GatewayIntents};
 

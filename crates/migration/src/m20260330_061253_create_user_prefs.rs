@@ -11,18 +11,18 @@ impl MigrationTrait for Migration {
                 Table::create()
                     .table(UserPrefs::Table)
                     .if_not_exists()
+                    .col(pk_auto(UserPrefs::Id))
                     .col(
-                        ColumnDef::new(UserPrefs::Id)
-                            .integer()
+                        ColumnDef::new(UserPrefs::LanguageCode)
+                            .string()
                             .not_null()
-                            .auto_increment()
-                            .primary_key(),
+                            .default("en"),
                     )
-                    .col(ColumnDef::new(UserPrefs::LanguageCode).string().not_null())
                     .col(
                         ColumnDef::new(UserPrefs::TranslationKey)
                             .string()
-                            .not_null(),
+                            .not_null()
+                            .default("BSB"),
                     )
                     .col(
                         ColumnDef::new(UserPrefs::UserId)
