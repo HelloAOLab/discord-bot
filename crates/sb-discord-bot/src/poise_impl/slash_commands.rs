@@ -1,5 +1,6 @@
 use poise::CreateReply;
 use serenity::all::{Colour, CreateEmbed, CreateEmbedFooter, RoleId};
+use strum::IntoEnumIterator;
 
 use crate::{
     discord_util::user::user_is_admin,
@@ -7,9 +8,34 @@ use crate::{
         data::Data,
         types::{Context, Error},
     },
-    store::valid_cache::is_valid_translation,
-    util::format::get_passage_url,
+    store::{
+        bibleapi::get_chapter,
+        contract::{BibleBooks, Translations},
+        valid_cache::{get_chapter_count, is_valid_translation},
+    },
+    util::{
+        format::{format_chapter_content, get_passage_url, split_into_embed_chunks},
+        prefs::{calc_lang, calc_translation},
+    },
 };
+
+async fn autocomplete_book<'a>(
+    _ctx: Context<'a>,
+    partial: &'a str,
+) -> impl Iterator<Item = String> + 'a {
+    BibleBooks::iter()
+        .map(|b| b.to_string())
+        .filter(move |b| b.to_lowercase().starts_with(&partial.to_lowercase()))
+}
+
+async fn autocomplete_translation<'a>(
+    _ctx: Context<'a>,
+    partial: &'a str,
+) -> impl Iterator<Item = String> + 'a {
+    Translations::iter()
+        .map(|t| t.to_string())
+        .filter(move |t| t.to_lowercase().starts_with(&partial.to_lowercase()))
+}
 
 #[poise::command(
     slash_command,
@@ -38,17 +64,26 @@ pub async fn help(ctx: Context<'_>) -> Result<(), Error> {
 )]
 pub async fn open(
     ctx: Context<'_>,
-    #[description = "Book"] book: String,
+    #[description = "Book"]
+    #[autocomplete = "autocomplete_book"]
+    book: String,
     #[description = "Chapter"] chapter: String,
-    #[description = "Translation"] translation: String,
-    #[description = "Language"] langauge: String,
+    #[autocomplete = "autocomplete_translation"]
+    #[description = "Translation"]
+    translation: Option<String>,
+    #[description = "Language"] langauge: Option<String>,
 ) -> Result<(), Error> {
+    let store = &ctx.data().store;
+    let user_id = ctx.author().id.to_string();
+    let guild_id = ctx.guild_id().map(|g| g.to_string());
+    let translation = calc_translation(translation.as_deref(), &user_id, guild_id.as_deref(), store.as_ref()).await;
+    let lang = calc_lang(langauge.as_deref(), &user_id, guild_id.as_deref(), store.as_ref()).await;
     ctx.send(CreateReply {
         embeds: vec![CreateEmbed::default().title("Open").url(get_passage_url(
             &book,
             &chapter,
-            &translation,
-            &langauge,
+            Some(&translation),
+            Some(&lang),
         ))],
         ..Default::default()
     })
@@ -65,7 +100,9 @@ pub async fn open(
 )]
 pub async fn settranslation(
     ctx: Context<'_>,
-    #[description = "Translation"] translation: String,
+    #[description = "Translation"]
+    #[autocomplete = "autocomplete_translation"]
+    translation: String,
 ) -> Result<(), Error> {
     if !is_valid_translation(&translation) {
         ctx.send(CreateReply {
@@ -104,7 +141,8 @@ pub async fn settranslation(
     description_localized(
         "en-US",
         "Set the role that will be pinged when the daily verse is posted. (Admin only)"
-    )
+    ),
+    required_permissions = "ADMINISTRATOR"
 )]
 pub async fn setdailyverserole(ctx: Context<'_>, role: RoleId) -> Result<(), Error> {
     let guild_id = match ctx.guild_id() {
@@ -126,15 +164,6 @@ pub async fn setdailyverserole(ctx: Context<'_>, role: RoleId) -> Result<(), Err
     if !role_exists {
         ctx.send(CreateReply {
             content: Some("That role does not exist in this server.".into()),
-            ..Default::default()
-        })
-        .await?;
-        return Ok(());
-    }
-
-    if !user_is_admin(ctx).await {
-        ctx.send(CreateReply {
-            content: Some("You must be an administrator to use this command.".into()),
             ..Default::default()
         })
         .await?;
@@ -216,12 +245,80 @@ pub async fn random(ctx: Context<'_>) -> Result<(), Error> {
 }
 
 #[poise::command(slash_command, description_localized("en-US", "Get a full chapter."))]
-pub async fn chapter(ctx: Context<'_>) -> Result<(), Error> {
+pub async fn chapter(
+    ctx: Context<'_>,
+    #[description = "Book"]
+    #[autocomplete = "autocomplete_book"]
+    book: String,
+    #[description = "Chapter"]
+    #[min = 1]
+    chapter: i64,
+    #[description = "Translation"]
+    #[autocomplete = "autocomplete_translation"]
+    translation: Option<String>,
+) -> Result<(), Error> {
+    let Ok(book) = book.parse::<BibleBooks>() else {
+        ctx.send(CreateReply {
+            content: Some(format!("Unknown book: {}", book)),
+            ..Default::default()
+        })
+        .await?;
+        return Ok(());
+    };
+    let store = &ctx.data().store;
+    let user_id = ctx.author().id.to_string();
+    let guild_id = ctx.guild_id().map(|g| g.to_string());
+    let translation = calc_translation(translation.as_deref(), &user_id, guild_id.as_deref(), store.as_ref()).await;
+    if let Some(max_chapter) = get_chapter_count(&translation, book.get_3c_id()).await {
+        if chapter > max_chapter {
+            ctx.send(CreateReply {
+                embeds: vec![
+                    CreateEmbed::default()
+                        .title("Invalid chapter")
+                        .description(format!("{} only has {} chapter(s) in {}.", book, max_chapter, translation))
+                        .color(Colour::new(16730184)),
+                ],
+                ..Default::default()
+            })
+            .await?;
+            return Ok(());
+        }
+    }
+    let response = get_chapter(&translation, &book, chapter).await?;
+    let content = format_chapter_content(&response.chapter);
+    let chunks = split_into_embed_chunks(&content);
+    let total = chunks.len();
+    for (i, chunk) in chunks.into_iter().enumerate() {
+        let title = if total > 1 {
+            format!("{} {} ({}/{})", book, chapter, i + 1, total)
+        } else {
+            format!("{} {}", book, chapter)
+        };
+        ctx.send(CreateReply {
+            embeds: vec![
+                CreateEmbed::default()
+                    .title(title)
+                    .description(chunk)
+                    .color(Colour::from_rgb(178, 255, 237)),
+            ],
+            ..Default::default()
+        })
+        .await?;
+    }
     Ok(())
 }
 
 #[poise::command(slash_command, description_localized("en-US", "Get a specific verse."))]
-pub async fn verse(ctx: Context<'_>) -> Result<(), Error> {
+pub async fn verse(
+    ctx: Context<'_>,
+    #[description = "The translation to use"]
+    #[autocomplete = "autocomplete_translation"]
+    translation: Option<String>,
+) -> Result<(), Error> {
+    let store = &ctx.data().store;
+    let user_id = ctx.author().id.to_string();
+    let guild_id = ctx.guild_id().map(|g| g.to_string());
+    let _translation = calc_translation(translation.as_deref(), &user_id, guild_id.as_deref(), store.as_ref()).await;
     Ok(())
 }
 

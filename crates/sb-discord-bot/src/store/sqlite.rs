@@ -40,16 +40,16 @@ impl DailyCache for SqliteStore {
 
 #[async_trait]
 impl UserPref for SqliteStore {
-    async fn get_user_translation(&self, user_id: String) -> String {
-        user_prefs::Entity::find_by_user_id(&user_id)
-            .one(&self.connection)
+    async fn get_user_translation(&self, user_id: String) -> Option<String> {
+        get_user_pref_by_uid(&self.connection, &user_id)
             .await
-            .unwrap()
-            .map(|pref| pref.translation_key)
-            .unwrap_or_else(|| {
-                // Default translation key if user preference is not found
-                "".to_string()
-            })
+            .and_then(|pref| Some(pref.translation_key).filter(|s| !s.is_empty()))
+    }
+
+    async fn get_user_language(&self, user_id: String) -> Option<String> {
+        get_user_pref_by_uid(&self.connection, &user_id)
+            .await
+            .and_then(|pref| Some(pref.language_code).filter(|s| !s.is_empty()))
     }
     async fn set_user_translation(&self, user_id: String, translation_key: &String) {
         let existing_pref = user_prefs::Entity::find_by_user_id(&user_id)
@@ -75,14 +75,16 @@ impl UserPref for SqliteStore {
 
 #[async_trait]
 impl ServerPref for SqliteStore {
-    async fn get_server_translation(&self, guild_id: String) -> String {
+    async fn get_server_translation(&self, guild_id: String) -> Option<String> {
         get_server_pref_by_guild_id(&self.connection, &guild_id)
             .await
-            .map(|pref| pref.translation_key)
-            .unwrap_or_else(|| {
-                // Default translation key if server preference is not found
-                "".to_string()
-            })
+            .and_then(|pref| Some(pref.translation_key).filter(|s| !s.is_empty()))
+    }
+
+    async fn get_server_language(&self, guild_id: String) -> Option<String> {
+        get_server_pref_by_guild_id(&self.connection, &guild_id)
+            .await
+            .and_then(|pref| Some(pref.language_code).filter(|s| !s.is_empty()))
     }
 
     async fn set_server_translation(&self, guild_id: String, translation_key: String) {
