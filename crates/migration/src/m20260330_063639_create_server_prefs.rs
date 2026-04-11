@@ -11,22 +11,18 @@ impl MigrationTrait for Migration {
                 Table::create()
                     .table(ServerPrefs::Table)
                     .if_not_exists()
-                    .col(
-                        pk_auto(ServerPrefs::Id)
-                            .integer()
-                            .not_null()
-                            .auto_increment()
-                            .primary_key(),
-                    )
+                    .col(pk_auto(ServerPrefs::Id))
                     .col(
                         ColumnDef::new(ServerPrefs::LanguageCode)
                             .string()
-                            .not_null(),
+                            .not_null()
+                            .default("en"),
                     )
                     .col(
                         ColumnDef::new(ServerPrefs::TranslationKey)
                             .string()
-                            .not_null(),
+                            .not_null()
+                            .default("BSB"),
                     )
                     .col(
                         ColumnDef::new(ServerPrefs::GuildId)

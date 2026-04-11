@@ -1,0 +1,12 @@
+services:
+  discord-bot:
+    build: .
+    restart: unless-stopped
+    environment:
+      DISCORD_TOKEN: ${DISCORD_TOKEN}
+      DATABASE_URL: sqlite:///data/bot.db?mode=rwc
+    volumes:
+      - bot-data:/data
+
+volumes:
+  bot-data:
