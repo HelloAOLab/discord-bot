@@ -1,3 +1,4 @@
+pub mod curated;
 pub mod sqlite;
 pub mod store;
 pub mod entity {

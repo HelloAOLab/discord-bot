@@ -12,6 +12,7 @@ use crate::{
     store::{
         bibleapi::{get_chapter, ChapterItem},
         contract::{BibleBooks, Translations},
+        curated::random_curated_verse,
         valid_cache::is_valid_translation,
     },
     util::format::{format_chapter_content, format_verse_content, get_passage_url, split_into_embed_chunks},
@@ -235,7 +236,48 @@ pub async fn truerandom(ctx: Context<'_>) -> Result<(), Error> {
     slash_command,
     description_localized("en-US", "Get a random bible verse from a curated pool.")
 )]
-pub async fn random(ctx: Context<'_>) -> Result<(), Error> {
+pub async fn random(
+    ctx: Context<'_>,
+    #[description = "Translation"]
+    #[autocomplete = "autocomplete_translation"]
+    translation: Option<String>,
+) -> Result<(), Error> {
+    let verse_ref = random_curated_verse();
+    let translation = resolve_translation(&ctx, translation.as_deref()).await;
+    let response = get_chapter(&translation, &verse_ref.book, verse_ref.chapter).await?;
+    let found = response.chapter.content.into_iter().find_map(|item| {
+        if let ChapterItem::Verse(v) = item {
+            if v.number == verse_ref.verse { Some(v) } else { None }
+        } else {
+            None
+        }
+    });
+    let Some(verse_data) = found else {
+        ctx.send(CreateReply {
+            embeds: vec![
+                CreateEmbed::default()
+                    .title("Verse not found")
+                    .description("The selected verse was not found in this translation. Try another.")
+                    .color(Colour::new(16730184)),
+            ],
+            ..Default::default()
+        })
+        .await?;
+        return Ok(());
+    };
+    ctx.send(CreateReply {
+        embeds: vec![
+            CreateEmbed::default()
+                .title(format!(
+                    "{} {}:{} ({})",
+                    verse_ref.book, verse_ref.chapter, verse_data.number, translation
+                ))
+                .description(format_verse_content(&verse_data))
+                .color(Colour::from_rgb(178, 255, 237)),
+        ],
+        ..Default::default()
+    })
+    .await?;
     Ok(())
 }
 

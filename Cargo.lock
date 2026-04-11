@@ -2970,6 +2970,7 @@ version = "0.1.0"
 dependencies = [
  "migration",
  "poise",
+ "rand 0.8.5",
  "reqwest",
  "sea-orm",
  "sea-orm-migration",
