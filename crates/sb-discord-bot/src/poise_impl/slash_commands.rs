@@ -16,7 +16,7 @@ use crate::{
         bibleapi::{get_chapter, ChapterItem},
         contract::{BibleBooks, Translations},
         curated::random_curated_verse,
-        valid_cache::{get_all_book_chapters, is_valid_translation},
+        valid_cache::{get_all_book_chapters, get_chapter_count, is_valid_translation},
     },
     util::format::{format_chapter_content, format_verse_content, get_passage_url, split_into_embed_chunks},
 };
@@ -299,6 +299,26 @@ pub async fn random(
 ) -> Result<(), Error> {
     let verse_ref = random_curated_verse();
     let translation = resolve_translation(&ctx, translation.as_deref()).await;
+    let unavailable = match get_chapter_count(&translation, verse_ref.book.get_3c_id()).await {
+        None => true,
+        Some(max) => verse_ref.chapter > max,
+    };
+    if unavailable {
+        ctx.send(CreateReply {
+            embeds: vec![
+                CreateEmbed::default()
+                    .title("Verse unavailable")
+                    .description(format!(
+                        "{} {}:{} is not available in {}. Try a different translation.",
+                        verse_ref.book, verse_ref.chapter, verse_ref.verse, translation
+                    ))
+                    .color(Colour::new(16730184)),
+            ],
+            ..Default::default()
+        })
+        .await?;
+        return Ok(());
+    }
     let response = get_chapter(&translation, &verse_ref.book, verse_ref.chapter).await?;
     let found = response.chapter.content.into_iter().find_map(|item| {
         if let ChapterItem::Verse(v) = item {
@@ -311,8 +331,11 @@ pub async fn random(
         ctx.send(CreateReply {
             embeds: vec![
                 CreateEmbed::default()
-                    .title("Verse not found")
-                    .description("The selected verse was not found in this translation. Try another.")
+                    .title("Verse unavailable")
+                    .description(format!(
+                        "{} {}:{} is not available in {}. Try a different translation.",
+                        verse_ref.book, verse_ref.chapter, verse_ref.verse, translation
+                    ))
                     .color(Colour::new(16730184)),
             ],
             ..Default::default()
