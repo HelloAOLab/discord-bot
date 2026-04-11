@@ -6,17 +6,15 @@ use crate::{
     discord_util::user::user_is_admin,
     poise_impl::{
         data::Data,
+        helpers::{parse_book, resolve_lang, resolve_translation, validate_chapter},
         types::{Context, Error},
     },
     store::{
-        bibleapi::get_chapter,
+        bibleapi::{get_chapter, ChapterItem},
         contract::{BibleBooks, Translations},
-        valid_cache::{get_chapter_count, is_valid_translation},
+        valid_cache::is_valid_translation,
     },
-    util::{
-        format::{format_chapter_content, get_passage_url, split_into_embed_chunks},
-        prefs::{calc_lang, calc_translation},
-    },
+    util::format::{format_chapter_content, format_verse_content, get_passage_url, split_into_embed_chunks},
 };
 
 async fn autocomplete_book<'a>(
@@ -73,11 +71,8 @@ pub async fn open(
     translation: Option<String>,
     #[description = "Language"] langauge: Option<String>,
 ) -> Result<(), Error> {
-    let store = &ctx.data().store;
-    let user_id = ctx.author().id.to_string();
-    let guild_id = ctx.guild_id().map(|g| g.to_string());
-    let translation = calc_translation(translation.as_deref(), &user_id, guild_id.as_deref(), store.as_ref()).await;
-    let lang = calc_lang(langauge.as_deref(), &user_id, guild_id.as_deref(), store.as_ref()).await;
+    let translation = resolve_translation(&ctx, translation.as_deref()).await;
+    let lang = resolve_lang(&ctx, langauge.as_deref()).await;
     ctx.send(CreateReply {
         embeds: vec![CreateEmbed::default().title("Open").url(get_passage_url(
             &book,
@@ -257,33 +252,9 @@ pub async fn chapter(
     #[autocomplete = "autocomplete_translation"]
     translation: Option<String>,
 ) -> Result<(), Error> {
-    let Ok(book) = book.parse::<BibleBooks>() else {
-        ctx.send(CreateReply {
-            content: Some(format!("Unknown book: {}", book)),
-            ..Default::default()
-        })
-        .await?;
-        return Ok(());
-    };
-    let store = &ctx.data().store;
-    let user_id = ctx.author().id.to_string();
-    let guild_id = ctx.guild_id().map(|g| g.to_string());
-    let translation = calc_translation(translation.as_deref(), &user_id, guild_id.as_deref(), store.as_ref()).await;
-    if let Some(max_chapter) = get_chapter_count(&translation, book.get_3c_id()).await {
-        if chapter > max_chapter {
-            ctx.send(CreateReply {
-                embeds: vec![
-                    CreateEmbed::default()
-                        .title("Invalid chapter")
-                        .description(format!("{} only has {} chapter(s) in {}.", book, max_chapter, translation))
-                        .color(Colour::new(16730184)),
-                ],
-                ..Default::default()
-            })
-            .await?;
-            return Ok(());
-        }
-    }
+    let Some(book) = parse_book(&ctx, &book).await? else { return Ok(()); };
+    let translation = resolve_translation(&ctx, translation.as_deref()).await;
+    if !validate_chapter(&ctx, &book, &translation, chapter).await? { return Ok(()); }
     let response = get_chapter(&translation, &book, chapter).await?;
     let content = format_chapter_content(&response.chapter);
     let chunks = split_into_embed_chunks(&content);
@@ -311,14 +282,53 @@ pub async fn chapter(
 #[poise::command(slash_command, description_localized("en-US", "Get a specific verse."))]
 pub async fn verse(
     ctx: Context<'_>,
-    #[description = "The translation to use"]
+    #[description = "Book"]
+    #[autocomplete = "autocomplete_book"]
+    book: String,
+    #[description = "Chapter"]
+    #[min = 1]
+    chapter: i64,
+    #[description = "Verse"]
+    #[min = 1]
+    verse: i64,
+    #[description = "Translation"]
     #[autocomplete = "autocomplete_translation"]
     translation: Option<String>,
 ) -> Result<(), Error> {
-    let store = &ctx.data().store;
-    let user_id = ctx.author().id.to_string();
-    let guild_id = ctx.guild_id().map(|g| g.to_string());
-    let _translation = calc_translation(translation.as_deref(), &user_id, guild_id.as_deref(), store.as_ref()).await;
+    let Some(book) = parse_book(&ctx, &book).await? else { return Ok(()); };
+    let translation = resolve_translation(&ctx, translation.as_deref()).await;
+    if !validate_chapter(&ctx, &book, &translation, chapter).await? { return Ok(()); }
+    let response = get_chapter(&translation, &book, chapter).await?;
+    let found = response.chapter.content.into_iter().find_map(|item| {
+        if let ChapterItem::Verse(v) = item {
+            if v.number == verse { Some(v) } else { None }
+        } else {
+            None
+        }
+    });
+    let Some(verse_data) = found else {
+        ctx.send(CreateReply {
+            embeds: vec![
+                CreateEmbed::default()
+                    .title("Verse not found")
+                    .description(format!("{} {} does not have a verse {}.", book, chapter, verse))
+                    .color(Colour::new(16730184)),
+            ],
+            ..Default::default()
+        })
+        .await?;
+        return Ok(());
+    };
+    ctx.send(CreateReply {
+        embeds: vec![
+            CreateEmbed::default()
+                .title(format!("{} {}:{} ({})", book, chapter, verse_data.number, translation))
+                .description(format_verse_content(&verse_data))
+                .color(Colour::from_rgb(178, 255, 237)),
+        ],
+        ..Default::default()
+    })
+    .await?;
     Ok(())
 }
 

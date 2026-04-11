@@ -1,4 +1,4 @@
-use crate::store::bibleapi::{Chapter, ChapterItem, ChapterItemContent};
+use crate::store::bibleapi::{Chapter, ChapterItem, ChapterItemContent, ChapterVerse};
 
 const EMBED_DESCRIPTION_LIMIT: usize = 4096;
 
@@ -45,6 +45,18 @@ pub fn split_into_embed_chunks(text: &str) -> Vec<String> {
         remaining = remaining[split_at..].trim_start_matches('\n');
     }
     chunks
+}
+
+pub fn format_verse_content(verse: &ChapterVerse) -> String {
+    verse
+        .content
+        .iter()
+        .filter_map(|c| match c {
+            ChapterItemContent::Text(t) => Some(t.as_str()),
+            ChapterItemContent::NoteId(_) => None,
+        })
+        .collect::<Vec<_>>()
+        .join("")
 }
 
 pub fn get_passage_url(book: &str, chapter: &str, translation: Option<&str>, lang: Option<&str>) -> String {
