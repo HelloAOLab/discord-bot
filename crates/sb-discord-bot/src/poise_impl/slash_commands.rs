@@ -223,7 +223,141 @@ pub async fn translations(
     slash_command,
     description_localized("en-US", "See the verse of the day.")
 )]
-pub async fn votd(ctx: Context<'_>) -> Result<(), Error> {
+pub async fn votd(
+    ctx: Context<'_>,
+    #[description = "Translation"]
+    #[autocomplete = "autocomplete_translation"]
+    translation: Option<String>,
+) -> Result<(), Error> {
+    let Some(guild_id) = ctx.guild_id() else {
+        ctx.send(CreateReply {
+            content: Some("This command can only be used in a server.".into()),
+            ..Default::default()
+        })
+        .await?;
+        return Ok(());
+    };
+    let store = &ctx.data().store;
+    let Some((book_3c_id, chapter, verse_num)) = store.get_server_votd(&guild_id.to_string()).await else {
+        ctx.send(CreateReply {
+            embeds: vec![
+                CreateEmbed::default()
+                    .title("No verse of the day set")
+                    .description("An admin can set one with `/setvotd`.")
+                    .color(Colour::new(16730184)),
+            ],
+            ..Default::default()
+        })
+        .await?;
+        return Ok(());
+    };
+    let Some(book) = BibleBooks::from_3c_id(&book_3c_id) else {
+        ctx.send(CreateReply {
+            embeds: vec![
+                CreateEmbed::default()
+                    .title("Invalid verse of the day")
+                    .description("The stored verse references an unrecognised book. An admin should reset it with `/setvotd`.")
+                    .color(Colour::new(16730184)),
+            ],
+            ..Default::default()
+        })
+        .await?;
+        return Ok(());
+    };
+    let translation = resolve_translation(&ctx, translation.as_deref()).await;
+    let response = get_chapter(&translation, &book, chapter).await?;
+    let found = response.chapter.content.into_iter().find_map(|item| {
+        if let ChapterItem::Verse(v) = item {
+            if v.number == verse_num { Some(v) } else { None }
+        } else {
+            None
+        }
+    });
+    let Some(verse_data) = found else {
+        ctx.send(CreateReply {
+            embeds: vec![
+                CreateEmbed::default()
+                    .title("Verse unavailable")
+                    .description(format!(
+                        "{} {}:{} is not available in {}. Try a different translation.",
+                        book, chapter, verse_num, translation
+                    ))
+                    .color(Colour::new(16730184)),
+            ],
+            ..Default::default()
+        })
+        .await?;
+        return Ok(());
+    };
+    ctx.send(CreateReply {
+        embeds: vec![
+            CreateEmbed::default()
+                .title(format!("Verse of the Day — {} {}:{} ({})", book, chapter, verse_data.number, translation))
+                .description(format_verse_content(&verse_data))
+                .color(Colour::from_rgb(178, 255, 237)),
+        ],
+        ..Default::default()
+    })
+    .await?;
+    Ok(())
+}
+
+#[poise::command(
+    slash_command,
+    description_localized("en-US", "Set the verse of the day for this server. (Admin only)"),
+    required_permissions = "ADMINISTRATOR"
+)]
+pub async fn setvotd(
+    ctx: Context<'_>,
+    #[description = "Book"]
+    #[autocomplete = "autocomplete_book"]
+    book: String,
+    #[description = "Chapter"]
+    #[min = 1]
+    chapter: i64,
+    #[description = "Verse"]
+    #[min = 1]
+    verse: i64,
+) -> Result<(), Error> {
+    let Some(guild_id) = ctx.guild_id() else {
+        ctx.send(CreateReply {
+            content: Some("This command can only be used in a server.".into()),
+            ..Default::default()
+        })
+        .await?;
+        return Ok(());
+    };
+    let Some(book) = parse_book(&ctx, &book).await? else { return Ok(()); };
+    let translation = resolve_translation(&ctx, None).await;
+    if !validate_chapter(&ctx, &book, &translation, chapter).await? { return Ok(()); }
+    let response = get_chapter(&translation, &book, chapter).await?;
+    let verse_exists = response.chapter.content.iter().any(|item| {
+        matches!(item, ChapterItem::Verse(v) if v.number == verse)
+    });
+    if !verse_exists {
+        ctx.send(CreateReply {
+            embeds: vec![
+                CreateEmbed::default()
+                    .title("Verse not found")
+                    .description(format!("{} {} does not have a verse {}.", book, chapter, verse))
+                    .color(Colour::new(16730184)),
+            ],
+            ..Default::default()
+        })
+        .await?;
+        return Ok(());
+    }
+    ctx.data().store.set_server_votd(&guild_id.to_string(), book.get_3c_id(), chapter, verse).await;
+    ctx.send(CreateReply {
+        embeds: vec![
+            CreateEmbed::default()
+                .title("Verse of the day set")
+                .description(format!("{} {}:{}", book, chapter, verse))
+                .color(Colour::new(2736712)),
+        ],
+        ..Default::default()
+    })
+    .await?;
     Ok(())
 }
 
@@ -458,6 +592,7 @@ pub fn all_commands() -> Vec<poise::Command<Data, Error>> {
         open(),
         settranslation(),
         setdailyverserole(),
+        setvotd(),
         translations(),
         votd(),
         truerandom(),

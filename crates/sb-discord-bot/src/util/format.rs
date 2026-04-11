@@ -2,6 +2,37 @@ use crate::store::bibleapi::{Chapter, ChapterItem, ChapterItemContent, ChapterVe
 
 const EMBED_DESCRIPTION_LIMIT: usize = 4096;
 
+/// Recursively extracts plain text from an unknown JSON content item.
+/// Handles objects with `"text"` or `"content"` fields, and arrays.
+/// Returns an empty string for shapes that contain no readable text (e.g. `{noteId}`).
+fn extract_text_from_value(val: &serde_json::Value) -> String {
+    match val {
+        serde_json::Value::String(s) => s.clone(),
+        serde_json::Value::Array(arr) => arr.iter().map(extract_text_from_value).collect(),
+        serde_json::Value::Object(map) => {
+            if let Some(text) = map.get("text") {
+                return extract_text_from_value(text);
+            }
+            if let Some(content) = map.get("content") {
+                return extract_text_from_value(content);
+            }
+            String::new()
+        }
+        _ => String::new(),
+    }
+}
+
+fn text_from_content_item(c: &ChapterItemContent) -> Option<String> {
+    match c {
+        ChapterItemContent::Text(t) => Some(t.clone()),
+        ChapterItemContent::NoteId(_) => None,
+        ChapterItemContent::Unknown(v) => {
+            let extracted = extract_text_from_value(v);
+            if extracted.is_empty() { None } else { Some(extracted) }
+        }
+    }
+}
+
 pub fn format_chapter_content(chapter: &Chapter) -> String {
     let mut text = String::new();
     for item in &chapter.content {
@@ -9,8 +40,8 @@ pub fn format_chapter_content(chapter: &Chapter) -> String {
             ChapterItem::Verse(v) => {
                 text.push_str(&format!("**{}** ", v.number));
                 for c in &v.content {
-                    if let ChapterItemContent::Text(t) = c {
-                        text.push_str(t);
+                    if let Some(t) = text_from_content_item(c) {
+                        text.push_str(&t);
                     }
                 }
                 text.push('\n');
@@ -20,7 +51,7 @@ pub fn format_chapter_content(chapter: &Chapter) -> String {
                 text.push_str(&h.content.join(" "));
                 text.push('\n');
             }
-            ChapterItem::LineBreak(_) => {
+            ChapterItem::LineBreak | ChapterItem::Unknown => {
                 text.push('\n');
             }
         }
@@ -48,15 +79,7 @@ pub fn split_into_embed_chunks(text: &str) -> Vec<String> {
 }
 
 pub fn format_verse_content(verse: &ChapterVerse) -> String {
-    verse
-        .content
-        .iter()
-        .filter_map(|c| match c {
-            ChapterItemContent::Text(t) => Some(t.as_str()),
-            ChapterItemContent::NoteId(_) => None,
-        })
-        .collect::<Vec<_>>()
-        .join("")
+    verse.content.iter().filter_map(text_from_content_item).collect()
 }
 
 pub fn get_passage_url(book: &str, chapter: &str, translation: Option<&str>, lang: Option<&str>) -> String {

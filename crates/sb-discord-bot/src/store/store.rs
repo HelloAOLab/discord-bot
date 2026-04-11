@@ -22,9 +22,16 @@ pub trait ServerPref: Send + Sync {
     async fn set_daily_verse_role(&self, guild_id: String, role_id: String);
 }
 
-pub trait Store: UserPref + ServerPref + DailyCache {}
+#[async_trait]
+pub trait VotdStore: Send + Sync {
+    /// Returns the server's verse of the day as `(book_3c_id, chapter, verse)`.
+    async fn get_server_votd(&self, guild_id: &str) -> Option<(String, i64, i64)>;
+    async fn set_server_votd(&self, guild_id: &str, book_3c_id: &str, chapter: i64, verse: i64);
+}
 
-impl<T: UserPref + ServerPref + DailyCache> Store for T {}
+pub trait Store: UserPref + ServerPref + DailyCache + VotdStore {}
+
+impl<T: UserPref + ServerPref + DailyCache + VotdStore> Store for T {}
 
 pub struct StoreKey;
 impl TypeMapKey for StoreKey {

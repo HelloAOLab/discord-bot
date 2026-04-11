@@ -8,9 +8,11 @@ use sea_orm::{
 };
 use serenity::{async_trait, model::user};
 
+use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
+
 use crate::store::{
-    entity::{server_prefs, user_prefs},
-    store::{DailyCache, ServerPref, UserPref},
+    entity::{kv, server_prefs, user_prefs},
+    store::{DailyCache, ServerPref, UserPref, VotdStore},
     valid_cache::{get_valid_translations, is_valid_translation},
 };
 
@@ -134,6 +136,9 @@ where
             translation_key: NotSet,
             language_code: NotSet,
             daily_verse_role_id: NotSet,
+            votd_book: NotSet,
+            votd_chapter: NotSet,
+            votd_verse: NotSet,
         },
     };
 
@@ -154,6 +159,26 @@ async fn get_user_pref_by_uid(
         .one(db)
         .await
         .unwrap()
+}
+
+#[async_trait]
+impl VotdStore for SqliteStore {
+    async fn get_server_votd(&self, guild_id: &str) -> Option<(String, i64, i64)> {
+        let pref = get_server_pref_by_guild_id(&self.connection, &guild_id.to_string()).await?;
+        let book = pref.votd_book?;
+        let chapter = pref.votd_chapter?;
+        let verse = pref.votd_verse?;
+        Some((book, chapter, verse))
+    }
+
+    async fn set_server_votd(&self, guild_id: &str, book_3c_id: &str, chapter: i64, verse: i64) {
+        upsert_server_pref(&self.connection, guild_id.to_string(), |m| {
+            m.votd_book = Set(Some(book_3c_id.to_string()));
+            m.votd_chapter = Set(Some(chapter));
+            m.votd_verse = Set(Some(verse));
+        })
+        .await;
+    }
 }
 
 async fn upsert_user_prefs<F>(db: &DatabaseConnection, user_id: String, apply: F)

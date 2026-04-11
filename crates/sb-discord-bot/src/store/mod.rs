@@ -2,6 +2,7 @@ pub mod curated;
 pub mod sqlite;
 pub mod store;
 pub mod entity {
+    pub mod kv;
     pub mod server_prefs;
     pub mod translation_support_item;
     pub mod translations;

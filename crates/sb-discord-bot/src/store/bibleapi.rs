@@ -23,16 +23,7 @@ pub async fn get_available_translations() -> Result<AvailableTranslationsRespons
 }
 
 #[derive(serde::Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum ChapterType {
-    Heading,
-    Verse,
-    LineBreak,
-}
-
-#[derive(serde::Deserialize)]
 pub struct ChapterHeading {
-    pub r#type: ChapterType,
     pub content: Vec<String>,
 }
 
@@ -42,31 +33,33 @@ pub struct NoteId {
     note_id: i64,
 }
 
+/// A single piece of content within a verse. Unknown shapes are preserved as
+/// raw JSON so they never cause the enclosing verse to be silently dropped.
 #[derive(serde::Deserialize)]
 #[serde(untagged)]
 pub enum ChapterItemContent {
     Text(String),
     NoteId(NoteId),
+    Unknown(serde_json::Value),
 }
 
 #[derive(serde::Deserialize)]
 pub struct ChapterVerse {
-    pub r#type: ChapterType,
     pub content: Vec<ChapterItemContent>,
     pub number: i64,
 }
 
+/// Internally tagged on the `"type"` field so the correct variant is always
+/// chosen by discriminant rather than by trial-and-error struct matching.
+/// `Unknown` catches any type strings not recognised by this client.
 #[derive(serde::Deserialize)]
-pub struct ChapterLineBreak {
-    pub r#type: ChapterType,
-}
-
-#[derive(serde::Deserialize)]
-#[serde(untagged)]
+#[serde(tag = "type", rename_all = "snake_case")]
 pub enum ChapterItem {
     Verse(ChapterVerse),
-    LineBreak(ChapterLineBreak),
+    LineBreak,
     Heading(ChapterHeading),
+    #[serde(other)]
+    Unknown,
 }
 
 #[derive(serde::Deserialize)]
