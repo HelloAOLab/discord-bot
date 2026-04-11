@@ -50,25 +50,48 @@ pub fn is_valid_language(language: &str) -> bool {
         .unwrap_or(false)
 }
 
-/// Returns the chapter count for the given book within a specific translation,
-/// fetching and caching the translation's book list on first access.
-pub async fn get_chapter_count(translation: &str, book_3c_id: &str) -> Option<i64> {
+/// Fetches the book list for `translation` from the API and inserts it into the
+/// cache. Does nothing if it is already cached. Returns `false` on fetch failure.
+async fn ensure_books_cached(translation: &str) -> bool {
     {
-        let cache = book_chapters_cache().lock().unwrap();
-        if let Some(books) = cache.get(translation) {
-            return books.get(book_3c_id).copied();
+        if book_chapters_cache().lock().unwrap().contains_key(translation) {
+            return true;
         }
     }
-    let resp = get_books_for_translation(translation).await.ok()?;
+    let Ok(resp) = get_books_for_translation(translation).await else {
+        return false;
+    };
     let books: HashMap<String, i64> = resp
         .books
         .into_iter()
         .map(|b| (b.id, b.number_of_chapters))
         .collect();
-    let count = books.get(book_3c_id).copied();
     book_chapters_cache()
         .lock()
         .unwrap()
         .insert(translation.to_string(), books);
-    count
+    true
+}
+
+/// Returns the chapter count for `book_3c_id` within `translation`,
+/// fetching and caching the translation's book list on first access.
+pub async fn get_chapter_count(translation: &str, book_3c_id: &str) -> Option<i64> {
+    ensure_books_cached(translation).await;
+    book_chapters_cache()
+        .lock()
+        .unwrap()
+        .get(translation)
+        .and_then(|books| books.get(book_3c_id).copied())
+}
+
+/// Returns all (book 3c id → chapter count) entries for `translation`,
+/// fetching and caching on first access.
+pub async fn get_all_book_chapters(translation: &str) -> HashMap<String, i64> {
+    ensure_books_cached(translation).await;
+    book_chapters_cache()
+        .lock()
+        .unwrap()
+        .get(translation)
+        .cloned()
+        .unwrap_or_default()
 }

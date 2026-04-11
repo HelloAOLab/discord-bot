@@ -2,6 +2,9 @@ use poise::CreateReply;
 use serenity::all::{Colour, CreateEmbed, CreateEmbedFooter, RoleId};
 use strum::IntoEnumIterator;
 
+use rand::seq::SliceRandom;
+use rand::Rng;
+
 use crate::{
     discord_util::user::user_is_admin,
     poise_impl::{
@@ -13,7 +16,7 @@ use crate::{
         bibleapi::{get_chapter, ChapterItem},
         contract::{BibleBooks, Translations},
         curated::random_curated_verse,
-        valid_cache::is_valid_translation,
+        valid_cache::{get_all_book_chapters, is_valid_translation},
     },
     util::format::{format_chapter_content, format_verse_content, get_passage_url, split_into_embed_chunks},
 };
@@ -228,7 +231,59 @@ pub async fn votd(ctx: Context<'_>) -> Result<(), Error> {
     slash_command,
     description_localized("en-US", "Get a random bible verse.")
 )]
-pub async fn truerandom(ctx: Context<'_>) -> Result<(), Error> {
+pub async fn truerandom(
+    ctx: Context<'_>,
+    #[description = "Translation"]
+    #[autocomplete = "autocomplete_translation"]
+    translation: Option<String>,
+) -> Result<(), Error> {
+    let translation = resolve_translation(&ctx, translation.as_deref()).await;
+    let book_chapters = get_all_book_chapters(&translation).await;
+    let eligible: Vec<(BibleBooks, i64)> = book_chapters
+        .into_iter()
+        .filter_map(|(id, count)| BibleBooks::from_3c_id(&id).map(|b| (b, count)))
+        .collect();
+    let Some((book, max_chapters)) = eligible.choose(&mut rand::thread_rng()) else {
+        ctx.send(CreateReply {
+            embeds: vec![
+                CreateEmbed::default()
+                    .title("No books found")
+                    .description(format!("Could not load books for translation {}.", translation))
+                    .color(Colour::new(16730184)),
+            ],
+            ..Default::default()
+        })
+        .await?;
+        return Ok(());
+    };
+    let chapter = rand::thread_rng().gen_range(1..=*max_chapters);
+    let response = get_chapter(&translation, book, chapter).await?;
+    let verses: Vec<_> = response.chapter.content.into_iter().filter_map(|item| {
+        if let ChapterItem::Verse(v) = item { Some(v) } else { None }
+    }).collect();
+    let Some(verse_data) = verses.choose(&mut rand::thread_rng()) else {
+        ctx.send(CreateReply {
+            embeds: vec![
+                CreateEmbed::default()
+                    .title("No verses found")
+                    .description("The randomly selected chapter had no verses.")
+                    .color(Colour::new(16730184)),
+            ],
+            ..Default::default()
+        })
+        .await?;
+        return Ok(());
+    };
+    ctx.send(CreateReply {
+        embeds: vec![
+            CreateEmbed::default()
+                .title(format!("{} {}:{} ({})", book, chapter, verse_data.number, translation))
+                .description(format_verse_content(verse_data))
+                .color(Colour::from_rgb(178, 255, 237)),
+        ],
+        ..Default::default()
+    })
+    .await?;
     Ok(())
 }
 
