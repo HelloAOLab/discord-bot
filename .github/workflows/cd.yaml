@@ -1,0 +1,32 @@
+name: Deployment
+
+on:
+    push:
+        branches:
+            - master
+
+permissions:
+    id-token: write # Required for OIDC
+    contents: write
+    packages: write
+
+jobs:
+    build:
+        name: Build and Release
+        runs-on: ubuntu-latest
+        env:
+            CI: true
+        steps:
+            - uses: actions/checkout@v1
+            - name: Test
+              run: cargo test
+            - name: Build Docker
+              run: |
+                  echo "Building..."
+                  docker build -t "ghcr.io/helloaolab/discord-bot:latest" .
+            - name: Login to GHCR
+              run: |
+                  echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+            - name: Publish GHCR
+              run: |
+                  docker push ghcr.io/helloaolab/discord-bot:latest
