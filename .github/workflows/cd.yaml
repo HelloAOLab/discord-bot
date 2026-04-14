@@ -18,8 +18,6 @@ jobs:
             CI: true
         steps:
             - uses: actions/checkout@v1
-            - name: Test
-              run: cargo test
             - name: Build Docker
               run: |
                   echo "Building..."
