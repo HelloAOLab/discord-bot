@@ -28,7 +28,11 @@ fn text_from_content_item(c: &ChapterItemContent) -> Option<String> {
         ChapterItemContent::NoteId(_) => None,
         ChapterItemContent::Unknown(v) => {
             let extracted = extract_text_from_value(v);
-            if extracted.is_empty() { None } else { Some(extracted) }
+            if extracted.is_empty() {
+                None
+            } else {
+                Some(extracted)
+            }
         }
     }
 }
@@ -89,7 +93,10 @@ pub fn split_into_embed_chunks(text: &str) -> Vec<String> {
 pub fn format_verse_content(verse: &ChapterVerse) -> String {
     let mut result = String::new();
     for t in verse.content.iter().filter_map(text_from_content_item) {
-        if !t.starts_with(char::is_whitespace) && !result.ends_with(char::is_whitespace) && !result.is_empty() {
+        if !t.starts_with(char::is_whitespace)
+            && !result.ends_with(char::is_whitespace)
+            && !result.is_empty()
+        {
             result.push(' ');
         }
         result.push_str(&t);
@@ -97,9 +104,14 @@ pub fn format_verse_content(verse: &ChapterVerse) -> String {
     result
 }
 
-pub fn get_passage_url(book: &str, chapter: &str, translation: Option<&str>, lang: Option<&str>) -> String {
+pub fn get_passage_url(
+    book: &str,
+    chapter: &str,
+    translation: Option<&str>,
+    lang: Option<&str>,
+) -> String {
     let mut url = format!(
-        "https://seed.bible/?book={}&chapter={}&source=discord_bot",
+        "https://ao.bot/?pattern=SeedBible&noGridPortal=true&book={}&chapter={}&source=discord_bot",
         book, chapter
     );
     if let Some(t) = translation {
