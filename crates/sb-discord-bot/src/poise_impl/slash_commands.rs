@@ -229,6 +229,7 @@ pub async fn votd(
     #[autocomplete = "autocomplete_translation"]
     translation: Option<String>,
 ) -> Result<(), Error> {
+    ctx.defer().await?;
     let Some(guild_id) = ctx.guild_id() else {
         ctx.send(CreateReply {
             content: Some("This command can only be used in a server.".into()),
@@ -319,6 +320,7 @@ pub async fn setvotd(
     #[min = 1]
     verse: i64,
 ) -> Result<(), Error> {
+    ctx.defer().await?;
     let Some(guild_id) = ctx.guild_id() else {
         ctx.send(CreateReply {
             content: Some("This command can only be used in a server.".into()),
@@ -371,6 +373,7 @@ pub async fn truerandom(
     #[autocomplete = "autocomplete_translation"]
     translation: Option<String>,
 ) -> Result<(), Error> {
+    ctx.defer().await?;
     let translation = resolve_translation(&ctx, translation.as_deref()).await;
     let book_chapters = get_all_book_chapters(&translation).await;
     let eligible: Vec<(BibleBooks, i64)> = book_chapters
@@ -431,6 +434,7 @@ pub async fn random(
     #[autocomplete = "autocomplete_translation"]
     translation: Option<String>,
 ) -> Result<(), Error> {
+    ctx.defer().await?;
     let verse_ref = random_curated_verse();
     let translation = resolve_translation(&ctx, translation.as_deref()).await;
     let unavailable = match get_chapter_count(&translation, verse_ref.book.get_3c_id()).await {
@@ -506,6 +510,7 @@ pub async fn chapter(
     #[autocomplete = "autocomplete_translation"]
     translation: Option<String>,
 ) -> Result<(), Error> {
+    ctx.defer().await?;
     let Some(book) = parse_book(&ctx, &book).await? else { return Ok(()); };
     let translation = resolve_translation(&ctx, translation.as_deref()).await;
     if !validate_chapter(&ctx, &book, &translation, chapter).await? { return Ok(()); }
@@ -549,6 +554,7 @@ pub async fn verse(
     #[autocomplete = "autocomplete_translation"]
     translation: Option<String>,
 ) -> Result<(), Error> {
+    ctx.defer().await?;
     let Some(book) = parse_book(&ctx, &book).await? else { return Ok(()); };
     let translation = resolve_translation(&ctx, translation.as_deref()).await;
     if !validate_chapter(&ctx, &book, &translation, chapter).await? { return Ok(()); }
