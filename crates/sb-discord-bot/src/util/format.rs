@@ -41,6 +41,11 @@ pub fn format_chapter_content(chapter: &Chapter) -> String {
                 text.push_str(&format!("**{}** ", v.number));
                 for c in &v.content {
                     if let Some(t) = text_from_content_item(c) {
+                        if !t.starts_with(char::is_whitespace)
+                            && !text.ends_with(char::is_whitespace)
+                        {
+                            text.push(' ');
+                        }
                         text.push_str(&t);
                     }
                 }
@@ -69,9 +74,12 @@ pub fn split_into_embed_chunks(text: &str) -> Vec<String> {
             chunks.push(remaining.to_string());
             break;
         }
-        let split_at = remaining[..EMBED_DESCRIPTION_LIMIT]
-            .rfind('\n')
-            .unwrap_or(EMBED_DESCRIPTION_LIMIT);
+        // Find the largest byte offset <= EMBED_DESCRIPTION_LIMIT that lands on a char boundary.
+        let boundary = (0..=EMBED_DESCRIPTION_LIMIT)
+            .rev()
+            .find(|&i| remaining.is_char_boundary(i))
+            .unwrap_or(0);
+        let split_at = remaining[..boundary].rfind('\n').unwrap_or(boundary);
         chunks.push(remaining[..split_at].to_string());
         remaining = remaining[split_at..].trim_start_matches('\n');
     }
@@ -79,7 +87,14 @@ pub fn split_into_embed_chunks(text: &str) -> Vec<String> {
 }
 
 pub fn format_verse_content(verse: &ChapterVerse) -> String {
-    verse.content.iter().filter_map(text_from_content_item).collect()
+    let mut result = String::new();
+    for t in verse.content.iter().filter_map(text_from_content_item) {
+        if !t.starts_with(char::is_whitespace) && !result.ends_with(char::is_whitespace) && !result.is_empty() {
+            result.push(' ');
+        }
+        result.push_str(&t);
+    }
+    result
 }
 
 pub fn get_passage_url(book: &str, chapter: &str, translation: Option<&str>, lang: Option<&str>) -> String {
