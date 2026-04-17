@@ -550,23 +550,77 @@ pub async fn verse(
     #[description = "Verse"]
     #[min = 1]
     verse: i64,
+    #[description = "End verse (optional, for a range like 1:1-5)"]
+    #[min = 1]
+    end_verse: Option<i64>,
     #[description = "Translation"]
     #[autocomplete = "autocomplete_translation"]
     translation: Option<String>,
 ) -> Result<(), Error> {
     ctx.defer().await?;
+
+    if let Some(end) = end_verse {
+        if end < verse {
+            ctx.send(CreateReply {
+                embeds: vec![
+                    CreateEmbed::default()
+                        .title("Invalid verse range")
+                        .description("End verse must be greater than or equal to the start verse.")
+                        .color(Colour::new(16730184)),
+                ],
+                ..Default::default()
+            })
+            .await?;
+            return Ok(());
+        }
+    }
+
     let Some(book) = parse_book(&ctx, &book).await? else { return Ok(()); };
     let translation = resolve_translation(&ctx, translation.as_deref()).await;
     if !validate_chapter(&ctx, &book, &translation, chapter).await? { return Ok(()); }
     let response = get_chapter(&translation, &book, chapter).await?;
-    let found = response.chapter.content.into_iter().find_map(|item| {
-        if let ChapterItem::Verse(v) = item {
-            if v.number == verse { Some(v) } else { None }
-        } else {
-            None
-        }
-    });
-    let Some(verse_data) = found else {
+
+    let Some(end) = end_verse else {
+        let found = response.chapter.content.into_iter().find_map(|item| {
+            if let ChapterItem::Verse(v) = item {
+                if v.number == verse { Some(v) } else { None }
+            } else {
+                None
+            }
+        });
+        let Some(verse_data) = found else {
+            ctx.send(CreateReply {
+                embeds: vec![
+                    CreateEmbed::default()
+                        .title("Verse not found")
+                        .description(format!("{} {} does not have a verse {}.", book, chapter, verse))
+                        .color(Colour::new(16730184)),
+                ],
+                ..Default::default()
+            })
+            .await?;
+            return Ok(());
+        };
+        ctx.send(CreateReply {
+            embeds: vec![
+                CreateEmbed::default()
+                    .title(format!("{} {}:{} ({})", book, chapter, verse_data.number, translation))
+                    .description(format_verse_content(&verse_data))
+                    .color(Colour::from_rgb(178, 255, 237)),
+            ],
+            ..Default::default()
+        })
+        .await?;
+        return Ok(());
+    };
+
+    let verses_in_chapter: Vec<_> = response.chapter.content.into_iter().filter_map(|item| {
+        if let ChapterItem::Verse(v) = item { Some(v) } else { None }
+    }).collect();
+
+    let verse_numbers: Vec<i64> = verses_in_chapter.iter().map(|v| v.number).collect();
+
+    if !verse_numbers.contains(&verse) {
         ctx.send(CreateReply {
             embeds: vec![
                 CreateEmbed::default()
@@ -578,17 +632,49 @@ pub async fn verse(
         })
         .await?;
         return Ok(());
-    };
-    ctx.send(CreateReply {
-        embeds: vec![
-            CreateEmbed::default()
-                .title(format!("{} {}:{} ({})", book, chapter, verse_data.number, translation))
-                .description(format_verse_content(&verse_data))
-                .color(Colour::from_rgb(178, 255, 237)),
-        ],
-        ..Default::default()
-    })
-    .await?;
+    }
+
+    if !verse_numbers.contains(&end) {
+        ctx.send(CreateReply {
+            embeds: vec![
+                CreateEmbed::default()
+                    .title("End verse not found")
+                    .description(format!("{} {} does not have a verse {}.", book, chapter, end))
+                    .color(Colour::new(16730184)),
+            ],
+            ..Default::default()
+        })
+        .await?;
+        return Ok(());
+    }
+
+    let range_verses: Vec<_> = verses_in_chapter.iter()
+        .filter(|v| v.number >= verse && v.number <= end)
+        .collect();
+
+    let content: String = range_verses.iter().map(|v| {
+        format!("**{}** {}\n", v.number, format_verse_content(v))
+    }).collect();
+
+    let chunks = split_into_embed_chunks(&content);
+    let total = chunks.len();
+    for (i, chunk) in chunks.into_iter().enumerate() {
+        let title = if total > 1 {
+            format!("{} {}:{}-{} ({}) ({}/{})", book, chapter, verse, end, translation, i + 1, total)
+        } else {
+            format!("{} {}:{}-{} ({})", book, chapter, verse, end, translation)
+        };
+        ctx.send(CreateReply {
+            embeds: vec![
+                CreateEmbed::default()
+                    .title(title)
+                    .description(chunk)
+                    .color(Colour::from_rgb(178, 255, 237)),
+            ],
+            ..Default::default()
+        })
+        .await?;
+    }
     Ok(())
 }
 
