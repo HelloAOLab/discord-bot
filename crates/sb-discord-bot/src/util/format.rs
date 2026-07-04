@@ -110,8 +110,7 @@ pub fn get_passage_url(
     translation: Option<&str>,
     lang: Option<&str>,
 ) -> String {
-    let mut url =
-        "https://ao.bot/?pattern=SeedBible&noGridPortal=true&source=discord_bot".to_string();
+    let mut url = "https://seedbible.org/?source=discord_bot".to_string();
     if let Some(b) = book {
         url.push_str(&format!("&book={}", b));
     }
