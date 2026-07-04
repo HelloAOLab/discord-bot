@@ -105,15 +105,19 @@ pub fn format_verse_content(verse: &ChapterVerse) -> String {
 }
 
 pub fn get_passage_url(
-    book: &str,
-    chapter: &str,
+    book: Option<&str>,
+    chapter: Option<&str>,
     translation: Option<&str>,
     lang: Option<&str>,
 ) -> String {
-    let mut url = format!(
-        "https://ao.bot/?pattern=SeedBible&noGridPortal=true&book={}&chapter={}&source=discord_bot",
-        book, chapter
-    );
+    let mut url =
+        "https://ao.bot/?pattern=SeedBible&noGridPortal=true&source=discord_bot".to_string();
+    if let Some(b) = book {
+        url.push_str(&format!("&book={}", b));
+    }
+    if let Some(c) = chapter {
+        url.push_str(&format!("&chapter={}", c));
+    }
     if let Some(t) = translation {
         url.push_str(&format!("&translation={}", t));
     }

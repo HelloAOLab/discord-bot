@@ -78,3 +78,20 @@ pub async fn resolve_lang(ctx: &Context<'_>, user_choice: Option<&str>) -> Strin
     let guild_id = ctx.guild_id().map(|g| g.to_string());
     calc_lang(user_choice, &user_id, guild_id.as_deref(), store.as_ref()).await
 }
+
+/// Splits a free-form passage reference like `"1 John 3"` into a book name
+/// and an optional chapter token. The final token is treated as the chapter
+/// if it's numeric and there's more than one token; otherwise the whole
+/// reference is treated as the book name (e.g. `"Genesis"`).
+pub fn split_reference(reference: &str) -> (String, Option<String>) {
+    let tokens: Vec<&str> = reference.split_whitespace().collect();
+    if tokens.len() > 1 {
+        if let Some(last) = tokens.last() {
+            if !last.is_empty() && last.chars().all(|c| c.is_ascii_digit()) {
+                let book = tokens[..tokens.len() - 1].join(" ");
+                return (book, Some(last.to_string()));
+            }
+        }
+    }
+    (tokens.join(" "), None)
+}
