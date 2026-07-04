@@ -20,6 +20,10 @@ pub trait ServerPref: Send + Sync {
     async fn set_server_translation(&self, guild_id: String, translation_key: String);
     async fn get_daily_verse_role(&self, guild_id: String) -> Option<String>;
     async fn set_daily_verse_role(&self, guild_id: String, role_id: String);
+    async fn get_seed_bible_links_enabled(&self, guild_id: String) -> bool;
+    async fn set_seed_bible_links_enabled(&self, guild_id: String, enabled: bool);
+    async fn get_inline_detection_enabled(&self, guild_id: String) -> bool;
+    async fn set_inline_detection_enabled(&self, guild_id: String, enabled: bool);
 }
 
 #[async_trait]

@@ -21,6 +21,10 @@ pub struct Model {
     pub votd_chapter: Option<i64>,
     // Verse of the day — verse number, NULL if unset.
     pub votd_verse: Option<i64>,
+    // Whether "Open in Seed Bible" links/buttons are shown in this server's responses.
+    pub seed_bible_links_enabled: bool,
+    // Whether the bot replies to bare verse references typed in chat (no slash command).
+    pub inline_detection_enabled: bool,
 }
 
 impl ActiveModelBehavior for ActiveModel {}
