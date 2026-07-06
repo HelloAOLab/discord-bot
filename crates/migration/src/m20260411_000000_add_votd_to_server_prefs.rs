@@ -18,7 +18,11 @@ impl MigrationTrait for Migration {
             .alter_table(
                 Table::alter()
                     .table(ServerPrefs::Table)
-                    .add_column_if_not_exists(ColumnDef::new(ServerPrefs::VotdChapter).big_integer().null())
+                    .add_column_if_not_exists(
+                        ColumnDef::new(ServerPrefs::VotdChapter)
+                            .big_integer()
+                            .null(),
+                    )
                     .to_owned(),
             )
             .await?;
@@ -26,7 +30,9 @@ impl MigrationTrait for Migration {
             .alter_table(
                 Table::alter()
                     .table(ServerPrefs::Table)
-                    .add_column_if_not_exists(ColumnDef::new(ServerPrefs::VotdVerse).big_integer().null())
+                    .add_column_if_not_exists(
+                        ColumnDef::new(ServerPrefs::VotdVerse).big_integer().null(),
+                    )
                     .to_owned(),
             )
             .await

@@ -54,7 +54,11 @@ pub fn is_valid_language(language: &str) -> bool {
 /// cache. Does nothing if it is already cached. Returns `false` on fetch failure.
 async fn ensure_books_cached(translation: &str) -> bool {
     {
-        if book_chapters_cache().lock().unwrap().contains_key(translation) {
+        if book_chapters_cache()
+            .lock()
+            .unwrap()
+            .contains_key(translation)
+        {
             return true;
         }
     }

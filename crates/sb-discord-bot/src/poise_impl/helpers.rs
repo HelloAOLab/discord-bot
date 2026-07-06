@@ -1,12 +1,9 @@
-use serenity::all::{Colour, CreateEmbed};
 use poise::CreateReply;
+use serenity::all::{Colour, CreateEmbed};
 
 use crate::{
     poise_impl::types::{Context, Error},
-    store::{
-        contract::BibleBooks,
-        valid_cache::get_chapter_count,
-    },
+    store::{contract::BibleBooks, valid_cache::get_chapter_count},
     util::prefs::{calc_lang, calc_translation},
 };
 
