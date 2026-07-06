@@ -66,3 +66,23 @@ pub fn random_curated_verse() -> &'static VerseRef {
         .choose(&mut rand::thread_rng())
         .expect("curated pool is non-empty")
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn always_returns_a_valid_reference_within_the_books_chapter_count() {
+        for _ in 0..200 {
+            let verse_ref = random_curated_verse();
+            assert!(verse_ref.chapter >= 1);
+            assert!(verse_ref.verse >= 1);
+            assert!(
+                verse_ref.chapter <= verse_ref.book.chapter_count(),
+                "{} {} exceeds its chapter count",
+                verse_ref.book,
+                verse_ref.chapter
+            );
+        }
+    }
+}

@@ -303,6 +303,65 @@ impl BibleBooks {
     }
 }
 
+#[cfg(test)]
+mod bible_books_tests {
+    use std::str::FromStr;
+
+    use strum::IntoEnumIterator;
+
+    use super::BibleBooks;
+
+    #[test]
+    fn every_book_round_trips_through_3c_id() {
+        for book in BibleBooks::iter() {
+            let id = book.get_3c_id();
+            let parsed = BibleBooks::from_3c_id(id)
+                .unwrap_or_else(|| panic!("3c id {} did not round-trip", id));
+            assert_eq!(parsed.get_3c_id(), id);
+        }
+    }
+
+    #[test]
+    fn every_book_round_trips_through_display_and_from_str() {
+        for book in BibleBooks::iter() {
+            let name = book.to_string();
+            let parsed = BibleBooks::from_str(&name)
+                .unwrap_or_else(|_| panic!("display name {} did not parse back", name));
+            assert_eq!(parsed.to_string(), name);
+        }
+    }
+
+    #[test]
+    fn from_str_is_case_insensitive() {
+        assert!(matches!(BibleBooks::from_str("john"), Ok(BibleBooks::John)));
+        assert!(matches!(BibleBooks::from_str("JOHN"), Ok(BibleBooks::John)));
+    }
+
+    #[test]
+    fn from_3c_id_rejects_unknown_id() {
+        assert!(BibleBooks::from_3c_id("XXX").is_none());
+    }
+
+    #[test]
+    fn every_book_has_a_positive_chapter_count() {
+        for book in BibleBooks::iter() {
+            assert!(book.chapter_count() > 0, "{} has no chapters", book);
+        }
+    }
+
+    #[test]
+    fn chapter_count_matches_known_values() {
+        assert_eq!(BibleBooks::Psalms.chapter_count(), 150);
+        assert_eq!(BibleBooks::Philemon.chapter_count(), 1);
+        assert_eq!(BibleBooks::Revelation.chapter_count(), 22);
+    }
+
+    #[test]
+    fn exactly_sixty_six_books() {
+        assert_eq!(BibleBooks::iter().count(), 66);
+    }
+}
+
 #[derive(Debug, Clone, strum::Display, strum::EnumString, strum::EnumIter)]
 pub enum Translations {
     AAB,
@@ -1558,4 +1617,27 @@ pub enum Translations {
     zpz_tbl,
     zsr_wbt,
     ztp_wbt,
+}
+
+#[cfg(test)]
+mod translations_tests {
+    use std::str::FromStr;
+
+    use strum::IntoEnumIterator;
+
+    use super::Translations;
+
+    #[test]
+    fn bsb_round_trips() {
+        assert!(matches!(
+            Translations::from_str("BSB"),
+            Ok(Translations::BSB)
+        ));
+        assert_eq!(Translations::BSB.to_string(), "BSB");
+    }
+
+    #[test]
+    fn has_many_translations() {
+        assert!(Translations::iter().count() > 100);
+    }
 }

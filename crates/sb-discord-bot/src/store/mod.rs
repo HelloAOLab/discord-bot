@@ -1,4 +1,6 @@
 pub mod curated;
+#[cfg(test)]
+pub mod fake;
 pub mod sqlite;
 pub mod store;
 pub mod entity {

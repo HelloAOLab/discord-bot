@@ -1,4 +1,6 @@
-use crate::store::bibleapi::{Chapter, ChapterItem, ChapterItemContent, ChapterVerse};
+use crate::store::bibleapi::{
+    Chapter, ChapterHeading, ChapterItem, ChapterItemContent, ChapterVerse,
+};
 
 const EMBED_DESCRIPTION_LIMIT: usize = 4096;
 
@@ -124,4 +126,109 @@ pub fn get_passage_url(
         url.push_str(&format!("&lang={}", l));
     }
     url
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn verse(number: i64, text: &str) -> ChapterVerse {
+        ChapterVerse {
+            number,
+            content: vec![ChapterItemContent::Text(text.to_string())],
+        }
+    }
+
+    #[test]
+    fn format_verse_content_joins_text_pieces() {
+        let v = ChapterVerse {
+            number: 16,
+            content: vec![
+                ChapterItemContent::Text("For God so loved".to_string()),
+                ChapterItemContent::Text(" the world".to_string()),
+            ],
+        };
+        assert_eq!(format_verse_content(&v), "For God so loved the world");
+    }
+
+    #[test]
+    fn format_verse_content_skips_note_ids() {
+        let v = ChapterVerse {
+            number: 1,
+            content: vec![
+                ChapterItemContent::Text("Hello".to_string()),
+                ChapterItemContent::NoteId(serde_json::from_str(r#"{"noteId":1}"#).unwrap()),
+            ],
+        };
+        assert_eq!(format_verse_content(&v), "Hello");
+    }
+
+    #[test]
+    fn format_verse_content_extracts_text_from_unknown_object_shape() {
+        let v = ChapterVerse {
+            number: 1,
+            content: vec![ChapterItemContent::Unknown(
+                serde_json::json!({"text": "nested"}),
+            )],
+        };
+        assert_eq!(format_verse_content(&v), "nested");
+    }
+
+    #[test]
+    fn format_chapter_content_includes_verse_numbers_and_headings() {
+        let chapter = Chapter {
+            number: 3,
+            content: vec![
+                ChapterItem::Heading(ChapterHeading {
+                    content: vec!["Section".to_string()],
+                }),
+                ChapterItem::Verse(verse(16, "For God so loved the world")),
+                ChapterItem::LineBreak,
+            ],
+        };
+        let text = format_chapter_content(&chapter);
+        assert!(text.contains("Section"));
+        assert!(text.contains("**16**"));
+        assert!(text.contains("For God so loved the world"));
+    }
+
+    #[test]
+    fn split_into_embed_chunks_returns_single_chunk_when_under_limit() {
+        let chunks = split_into_embed_chunks("short text");
+        assert_eq!(chunks, vec!["short text".to_string()]);
+    }
+
+    #[test]
+    fn split_into_embed_chunks_splits_long_text_on_newline_boundary() {
+        let line = "a".repeat(100);
+        let text = std::iter::repeat_n(line.clone(), 50)
+            .collect::<Vec<_>>()
+            .join("\n");
+        let chunks = split_into_embed_chunks(&text);
+        assert!(chunks.len() > 1);
+        for chunk in &chunks {
+            assert!(chunk.len() <= 4096);
+        }
+        assert_eq!(chunks.join("\n"), text);
+    }
+
+    #[test]
+    fn split_into_embed_chunks_handles_empty_text() {
+        assert!(split_into_embed_chunks("").is_empty());
+    }
+
+    #[test]
+    fn get_passage_url_includes_only_provided_params() {
+        let url = get_passage_url(None, None, None, None);
+        assert_eq!(url, "https://seedbible.org/?source=discord_bot");
+    }
+
+    #[test]
+    fn get_passage_url_includes_all_provided_params() {
+        let url = get_passage_url(Some("JHN"), Some("3"), Some("BSB"), Some("en"));
+        assert!(url.contains("book=JHN"));
+        assert!(url.contains("chapter=3"));
+        assert!(url.contains("translation=BSB"));
+        assert!(url.contains("lang=en"));
+    }
 }
