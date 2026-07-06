@@ -4,14 +4,16 @@ use serenity::all::{
 
 use crate::{
     store::{
-        bibleapi::{get_chapter, ChapterItem},
+        bibleapi::{ChapterItem, get_chapter},
         store::{Store, StoreKey},
         valid_cache::get_valid_translations,
     },
     util::{
-        format::{format_chapter_content, format_verse_content, get_passage_url, split_into_embed_chunks},
+        format::{
+            format_chapter_content, format_verse_content, get_passage_url, split_into_embed_chunks,
+        },
         prefs::calc_translation,
-        reference_parser::{find_references, format_verse_numbers, ParsedReference},
+        reference_parser::{ParsedReference, find_references, format_verse_numbers},
     },
 };
 
@@ -112,10 +114,11 @@ async fn respond_to_reference(
                         .color(Colour::from_rgb(178, 255, 237)),
                 );
                 if show_button && i + 1 == total {
+                    let chapter_string = reference.chapter.to_string();
                     builder = builder.components(vec![CreateActionRow::Buttons(vec![
                         CreateButton::new_link(get_passage_url(
-                            &reference.book.to_string(),
-                            &reference.chapter.to_string(),
+                            Some(reference.book.get_3c_id()),
+                            Some(&chapter_string),
                             Some(translation),
                             None,
                         ))
