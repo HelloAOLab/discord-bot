@@ -10,7 +10,11 @@ pub struct VerseRef {
 
 impl VerseRef {
     const fn new(book: BibleBooks, chapter: i64, verse: i64) -> Self {
-        Self { book, chapter, verse }
+        Self {
+            book,
+            chapter,
+            verse,
+        }
     }
 }
 
