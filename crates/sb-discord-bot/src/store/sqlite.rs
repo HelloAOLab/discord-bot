@@ -109,6 +109,30 @@ impl ServerPref for SqliteStore {
         })
         .await
     }
+    async fn get_seed_bible_links_enabled(&self, guild_id: String) -> bool {
+        get_server_pref_by_guild_id(&self.connection, &guild_id)
+            .await
+            .map(|pref| pref.seed_bible_links_enabled)
+            .unwrap_or(true)
+    }
+    async fn set_seed_bible_links_enabled(&self, guild_id: String, enabled: bool) {
+        upsert_server_pref(&self.connection, guild_id, |m| {
+            m.seed_bible_links_enabled = Set(enabled);
+        })
+        .await
+    }
+    async fn get_inline_detection_enabled(&self, guild_id: String) -> bool {
+        get_server_pref_by_guild_id(&self.connection, &guild_id)
+            .await
+            .map(|pref| pref.inline_detection_enabled)
+            .unwrap_or(true)
+    }
+    async fn set_inline_detection_enabled(&self, guild_id: String, enabled: bool) {
+        upsert_server_pref(&self.connection, guild_id, |m| {
+            m.inline_detection_enabled = Set(enabled);
+        })
+        .await
+    }
 }
 
 async fn get_server_pref_by_guild_id(
@@ -139,6 +163,8 @@ where
             votd_book: NotSet,
             votd_chapter: NotSet,
             votd_verse: NotSet,
+            seed_bible_links_enabled: NotSet,
+            inline_detection_enabled: NotSet,
         },
     };
 

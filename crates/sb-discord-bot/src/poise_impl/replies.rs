@@ -29,7 +29,7 @@ pub fn build_help_reply() -> CreateReply {
                 .title("Help")
                 .description("Seed Bible Bot Commands:\n\n`/open` - Open a passage (or the app) in Seed Bible\n`/verse` - Get a specific verse\n`/chapter` — Get a full chapter\n`/random` — Random verse from curated pool\n`/truerandom` — Any verse in the Bible\n`/votd` — Verse of the day\n`/translations` — List available translations\n`/settranslation` — Set your personal default translation")
                 .color(Colour::from_rgb(178, 255, 237))
-                .footer(CreateEmbedFooter::new("(admin) /setservertranslation, /setseedbiblelinks, /setdailychannel, /setdailyverserole"))
+                .footer(CreateEmbedFooter::new("(admin) /setservertranslation, /setseedbiblelinks, /setinlinedetection, /setdailychannel, /setdailyverserole"))
         ],
         ..Default::default()
     }
@@ -335,6 +335,7 @@ pub fn build_chapter_replies(
     book: &BibleBooks,
     chapter: i64,
     chunks: Vec<String>,
+    open_in_seed_bible_url: Option<String>,
 ) -> Vec<CreateReply> {
     let total = chunks.len();
     chunks
@@ -346,6 +347,15 @@ pub fn build_chapter_replies(
             } else {
                 format!("{} {}", book, chapter)
             };
+            let components = if i + 1 == total {
+                open_in_seed_bible_url.clone().map(|url| {
+                    vec![CreateActionRow::Buttons(vec![
+                        CreateButton::new_link(url).label("Open in Seed Bible"),
+                    ])]
+                })
+            } else {
+                None
+            };
             CreateReply {
                 embeds: vec![
                     CreateEmbed::default()
@@ -353,6 +363,7 @@ pub fn build_chapter_replies(
                         .description(chunk)
                         .color(Colour::from_rgb(178, 255, 237)),
                 ],
+                components,
                 ..Default::default()
             }
         })
@@ -774,10 +785,12 @@ mod tests {
 
     #[test]
     fn chapter_replies_single_chunk_has_no_pagination_suffix() {
-        let replies = build_chapter_replies(&BibleBooks::John, 3, vec!["content".to_string()]);
+        let replies =
+            build_chapter_replies(&BibleBooks::John, 3, vec!["content".to_string()], None);
         assert_eq!(replies.len(), 1);
         assert_eq!(embed_title(&replies[0], 0), "John 3");
         assert_eq!(embed_description(&replies[0], 0), "content");
+        assert!(replies[0].components.is_none());
     }
 
     #[test]
@@ -786,10 +799,30 @@ mod tests {
             &BibleBooks::John,
             3,
             vec!["part1".to_string(), "part2".to_string()],
+            None,
         );
         assert_eq!(replies.len(), 2);
         assert_eq!(embed_title(&replies[0], 0), "John 3 (1/2)");
         assert_eq!(embed_title(&replies[1], 0), "John 3 (2/2)");
+    }
+
+    #[test]
+    fn chapter_replies_put_open_link_button_only_on_last_chunk() {
+        let replies = build_chapter_replies(
+            &BibleBooks::John,
+            3,
+            vec!["part1".to_string(), "part2".to_string()],
+            Some("https://seedbible.org/?book=JHN".to_string()),
+        );
+        assert!(replies[0].components.is_none());
+        assert!(replies[1].components.is_some());
+    }
+
+    #[test]
+    fn chapter_replies_no_button_when_url_not_provided() {
+        let replies =
+            build_chapter_replies(&BibleBooks::John, 3, vec!["content".to_string()], None);
+        assert!(replies[0].components.is_none());
     }
 
     #[test]

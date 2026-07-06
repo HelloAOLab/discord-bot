@@ -16,6 +16,8 @@ pub struct FakeStore {
     server_languages: Mutex<HashMap<String, String>>,
     daily_verse_roles: Mutex<HashMap<String, String>>,
     votd: Mutex<HashMap<String, (String, i64, i64)>>,
+    seed_bible_links_enabled: Mutex<HashMap<String, bool>>,
+    inline_detection_enabled: Mutex<HashMap<String, bool>>,
 }
 
 impl FakeStore {
@@ -68,6 +70,22 @@ impl FakeStore {
             guild_id.to_string(),
             (book_3c_id.to_string(), chapter, verse),
         );
+        self
+    }
+
+    pub fn with_seed_bible_links_enabled(self, guild_id: &str, enabled: bool) -> Self {
+        self.seed_bible_links_enabled
+            .lock()
+            .unwrap()
+            .insert(guild_id.to_string(), enabled);
+        self
+    }
+
+    pub fn with_inline_detection_enabled(self, guild_id: &str, enabled: bool) -> Self {
+        self.inline_detection_enabled
+            .lock()
+            .unwrap()
+            .insert(guild_id.to_string(), enabled);
         self
     }
 
@@ -144,6 +162,38 @@ impl ServerPref for FakeStore {
             .lock()
             .unwrap()
             .insert(guild_id, role_id);
+    }
+
+    async fn get_seed_bible_links_enabled(&self, guild_id: String) -> bool {
+        self.seed_bible_links_enabled
+            .lock()
+            .unwrap()
+            .get(&guild_id)
+            .copied()
+            .unwrap_or(true)
+    }
+
+    async fn set_seed_bible_links_enabled(&self, guild_id: String, enabled: bool) {
+        self.seed_bible_links_enabled
+            .lock()
+            .unwrap()
+            .insert(guild_id, enabled);
+    }
+
+    async fn get_inline_detection_enabled(&self, guild_id: String) -> bool {
+        self.inline_detection_enabled
+            .lock()
+            .unwrap()
+            .get(&guild_id)
+            .copied()
+            .unwrap_or(true)
+    }
+
+    async fn set_inline_detection_enabled(&self, guild_id: String, enabled: bool) {
+        self.inline_detection_enabled
+            .lock()
+            .unwrap()
+            .insert(guild_id, enabled);
     }
 }
 

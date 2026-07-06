@@ -1,4 +1,5 @@
-use serenity::all::RoleId;
+use poise::CreateReply;
+use serenity::all::{Colour, CreateEmbed, RoleId};
 use strum::IntoEnumIterator;
 
 use crate::{
@@ -29,7 +30,7 @@ use crate::{
         curated::random_curated_verse,
         valid_cache::{get_all_book_chapters, get_chapter_count, is_valid_translation},
     },
-    util::format::{format_chapter_content, split_into_embed_chunks},
+    util::format::{format_chapter_content, get_passage_url, split_into_embed_chunks},
 };
 
 async fn autocomplete_book<'a>(
@@ -167,6 +168,96 @@ pub async fn setdailyverserole(ctx: Context<'_>, role: RoleId) -> Result<(), Err
     }
     let reply = apply_daily_verse_role(ctx.data().store.as_ref(), guild_id, role).await;
     ctx.send(reply).await?;
+    Ok(())
+}
+
+#[poise::command(
+    slash_command,
+    description_localized(
+        "en-US",
+        "Toggle \"Open in Seed Bible\" links for this server. (Requires Manage Server)"
+    ),
+    required_permissions = "MANAGE_GUILD"
+)]
+pub async fn setseedbiblelinks(
+    ctx: Context<'_>,
+    #[description = "On or off"]
+    #[choices("on", "off")]
+    value: &'static str,
+) -> Result<(), Error> {
+    let Some(guild_id) = ctx.guild_id() else {
+        ctx.send(CreateReply {
+            content: Some("This command can only be used in a server.".into()),
+            ..Default::default()
+        })
+        .await?;
+        return Ok(());
+    };
+    let enabled = value == "on";
+    ctx.data()
+        .store
+        .set_seed_bible_links_enabled(guild_id.to_string(), enabled)
+        .await;
+    let description = if enabled {
+        "✅ Seed Bible links are now **on** for this server.".to_string()
+    } else {
+        "✅ Seed Bible links are now **off** for this server. Verses and chapters will be posted as plain text only.".to_string()
+    };
+    ctx.send(CreateReply {
+        embeds: vec![
+            CreateEmbed::default()
+                .title("Seed Bible links updated")
+                .description(description)
+                .color(Colour::new(2736712)),
+        ],
+        ..Default::default()
+    })
+    .await?;
+    Ok(())
+}
+
+#[poise::command(
+    slash_command,
+    description_localized(
+        "en-US",
+        "Toggle automatic replies to Bible references typed in chat. (Requires Manage Server)"
+    ),
+    required_permissions = "MANAGE_GUILD"
+)]
+pub async fn setinlinedetection(
+    ctx: Context<'_>,
+    #[description = "On or off"]
+    #[choices("on", "off")]
+    value: &'static str,
+) -> Result<(), Error> {
+    let Some(guild_id) = ctx.guild_id() else {
+        ctx.send(CreateReply {
+            content: Some("This command can only be used in a server.".into()),
+            ..Default::default()
+        })
+        .await?;
+        return Ok(());
+    };
+    let enabled = value == "on";
+    ctx.data()
+        .store
+        .set_inline_detection_enabled(guild_id.to_string(), enabled)
+        .await;
+    let description = if enabled {
+        "✅ Inline verse detection is now **on** for this server.".to_string()
+    } else {
+        "✅ Inline verse detection is now **off** for this server.".to_string()
+    };
+    ctx.send(CreateReply {
+        embeds: vec![
+            CreateEmbed::default()
+                .title("Inline verse detection updated")
+                .description(description)
+                .color(Colour::new(2736712)),
+        ],
+        ..Default::default()
+    })
+    .await?;
     Ok(())
 }
 
@@ -389,7 +480,25 @@ pub async fn chapter(
     let response = get_chapter(&translation, &book, chapter).await?;
     let content = format_chapter_content(&response.chapter);
     let chunks = split_into_embed_chunks(&content);
-    for reply in build_chapter_replies(&book, chapter, chunks) {
+    let show_button = match ctx.guild_id() {
+        Some(guild_id) => {
+            ctx.data()
+                .store
+                .get_seed_bible_links_enabled(guild_id.to_string())
+                .await
+        }
+        None => true,
+    };
+    let chapter_string = chapter.to_string();
+    let open_url = show_button.then(|| {
+        get_passage_url(
+            Some(book.get_3c_id()),
+            Some(&chapter_string),
+            Some(&translation),
+            None,
+        )
+    });
+    for reply in build_chapter_replies(&book, chapter, chunks, open_url) {
         ctx.send(reply).await?;
     }
     Ok(())
@@ -471,6 +580,8 @@ pub fn all_commands() -> Vec<poise::Command<Data, Error>> {
         open(),
         settranslation(),
         setdailyverserole(),
+        setseedbiblelinks(),
+        setinlinedetection(),
         setvotd(),
         translations(),
         votd(),
