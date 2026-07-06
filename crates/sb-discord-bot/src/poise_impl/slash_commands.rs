@@ -1,5 +1,5 @@
 use poise::CreateReply;
-use serenity::all::{Colour, CreateEmbed, CreateEmbedFooter, RoleId};
+use serenity::all::{Colour, CreateActionRow, CreateButton, CreateEmbed, CreateEmbedFooter, RoleId};
 use strum::IntoEnumIterator;
 
 use rand::seq::SliceRandom;
@@ -9,7 +9,7 @@ use crate::{
     discord_util::user::user_is_admin,
     poise_impl::{
         data::Data,
-        helpers::{parse_book, resolve_lang, resolve_translation, validate_chapter},
+        helpers::{parse_book, resolve_lang, resolve_translation, split_reference, validate_chapter},
         types::{Context, Error},
     },
     store::{
@@ -50,7 +50,7 @@ pub async fn help(ctx: Context<'_>) -> Result<(), Error> {
         embeds: vec![
             CreateEmbed::default()
                 .title("Help")
-                .description("Seed Bible Bot Commands:\n\n`/open` - Open a passage in Seed Bible\n`/verse` - Get a specific verse\n`/chapter` — Get a full chapter\n`/random` — Random verse from curated pool\n`/truerandom` — Any verse in the Bible\n`/votd` — Verse of the day\n`/translations` — List available translations\n`/settranslation` — Set your personal default translation")
+                .description("Seed Bible Bot Commands:\n\n`/open` - Open a passage (or the app) in Seed Bible\n`/verse` - Get a specific verse\n`/chapter` — Get a full chapter\n`/random` — Random verse from curated pool\n`/truerandom` — Any verse in the Bible\n`/votd` — Verse of the day\n`/translations` — List available translations\n`/settranslation` — Set your personal default translation")
                 .color(Colour::from_rgb(178, 255, 237))
                 .footer(CreateEmbedFooter::new("(admin) /setservertranslation, /setseedbiblelinks, /setdailychannel, /setdailyverserole"))
         ],
@@ -62,28 +62,83 @@ pub async fn help(ctx: Context<'_>) -> Result<(), Error> {
 
 #[poise::command(
     slash_command,
-    description_localized("en-US", "Open a passage at the given location ")
+    description_localized("en-US", "Open a passage in Seed Bible.")
 )]
 pub async fn open(
     ctx: Context<'_>,
-    #[description = "Book"]
-    #[autocomplete = "autocomplete_book"]
-    book: String,
-    #[description = "Chapter"] chapter: String,
+    #[description = "Passage to open, e.g. \"John 3\" (optional)"] reference: Option<String>,
     #[autocomplete = "autocomplete_translation"]
     #[description = "Translation"]
     translation: Option<String>,
-    #[description = "Language"] langauge: Option<String>,
+    #[description = "Seed Bible UI language"] lang: Option<String>,
 ) -> Result<(), Error> {
+    ctx.defer().await?;
+
     let translation = resolve_translation(&ctx, translation.as_deref()).await;
-    let lang = resolve_lang(&ctx, langauge.as_deref()).await;
+    let lang = resolve_lang(&ctx, lang.as_deref()).await;
+
+    let reference = reference
+        .as_deref()
+        .map(str::trim)
+        .filter(|r| !r.is_empty());
+
+    let mut book = None;
+    let mut chapter: Option<i64> = None;
+
+    if let Some(reference) = reference {
+        let (book_name, chapter_str) = split_reference(reference);
+        let Some(parsed_book) = parse_book(&ctx, &book_name).await? else {
+            return Ok(());
+        };
+
+        if let Some(chapter_str) = chapter_str {
+            let Ok(parsed_chapter) = chapter_str.parse::<i64>() else {
+                ctx.send(CreateReply {
+                    embeds: vec![
+                        CreateEmbed::default()
+                            .title("Invalid chapter")
+                            .description(format!(
+                                "\"{}\" is not a valid chapter number.",
+                                chapter_str
+                            ))
+                            .color(Colour::new(16730184)),
+                    ],
+                    ..Default::default()
+                })
+                .await?;
+                return Ok(());
+            };
+            if !validate_chapter(&ctx, &parsed_book, &translation, parsed_chapter).await? {
+                return Ok(());
+            }
+            chapter = Some(parsed_chapter);
+        }
+        book = Some(parsed_book);
+    }
+
+    let description = match (&book, chapter) {
+        (Some(b), Some(c)) => format!("Open {} {} in Seed Bible:", b, c),
+        (Some(b), None) => format!("Open {} in Seed Bible:", b),
+        (None, _) => "Open Seed Bible:".to_string(),
+    };
+
+    let chapter_string = chapter.map(|c| c.to_string());
+    let url = get_passage_url(
+        book.as_ref().map(BibleBooks::get_3c_id),
+        chapter_string.as_deref(),
+        Some(&translation),
+        Some(&lang),
+    );
+
     ctx.send(CreateReply {
-        embeds: vec![CreateEmbed::default().title("Open").url(get_passage_url(
-            &book,
-            &chapter,
-            Some(&translation),
-            Some(&lang),
-        ))],
+        embeds: vec![
+            CreateEmbed::default()
+                .description(description)
+                .color(Colour::from_rgb(178, 255, 237)),
+        ],
+        components: Some(vec![CreateActionRow::Buttons(vec![
+            CreateButton::new_link(url).label("Open →"),
+        ])]),
         ..Default::default()
     })
     .await?;
