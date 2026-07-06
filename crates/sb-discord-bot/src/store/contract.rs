@@ -1,4 +1,5 @@
 #[derive(Debug, Clone, PartialEq, Eq, strum::Display, strum::EnumString, strum::EnumIter)]
+#[strum(ascii_case_insensitive)]
 pub enum BibleBooks {
     Genesis,
     Exodus,
