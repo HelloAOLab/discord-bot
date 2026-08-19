@@ -11,8 +11,8 @@ use serenity::{async_trait, model::user};
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
 
 use crate::store::{
-    entity::{kv, server_prefs, user_prefs},
-    store::{DailyCache, ServerPref, UserPref, VotdStore},
+    entity::{kv, scheduled_session_subscribers, scheduled_sessions, server_prefs, user_prefs},
+    store::{DailyCache, ScheduledSession, ServerPref, SessionStore, UserPref, VotdStore},
     valid_cache::{get_valid_translations, is_valid_translation},
 };
 
@@ -230,5 +230,160 @@ where
         active_model.insert(db).await.unwrap();
     } else {
         active_model.update(db).await.unwrap();
+    }
+}
+
+fn to_scheduled_session(model: scheduled_sessions::Model) -> ScheduledSession {
+    ScheduledSession {
+        id: model.id,
+        session_uuid: model.session_uuid,
+        guild_id: model.guild_id,
+        channel_id: model.channel_id,
+        creator_id: model.creator_id,
+        book_id: model.book_id,
+        chapter: model.chapter,
+        announcement_message_id: model.announcement_message_id,
+        scheduled_at: model.scheduled_at,
+        reminder_minutes: model.reminder_minutes,
+        reminder_sent: model.reminder_sent,
+        status: model.status,
+    }
+}
+
+#[async_trait]
+impl SessionStore for SqliteStore {
+    async fn create_scheduled_session(
+        &self,
+        session_uuid: String,
+        guild_id: String,
+        channel_id: String,
+        creator_id: String,
+        book_id: String,
+        chapter: i64,
+        scheduled_at: i64,
+        reminder_minutes: Option<i64>,
+    ) -> ScheduledSession {
+        let new_session = scheduled_sessions::ActiveModel {
+            id: NotSet,
+            session_uuid: Set(session_uuid),
+            guild_id: Set(guild_id),
+            channel_id: Set(channel_id),
+            creator_id: Set(creator_id),
+            book_id: Set(book_id),
+            chapter: Set(chapter),
+            announcement_message_id: NotSet,
+            scheduled_at: Set(scheduled_at),
+            reminder_minutes: Set(reminder_minutes),
+            reminder_sent: Set(false),
+            status: Set("pending".to_string()),
+            created_at: Set(chrono::Utc::now().timestamp()),
+        };
+        let model = new_session.insert(&self.connection).await.unwrap();
+        to_scheduled_session(model)
+    }
+
+    async fn set_session_announcement_message(&self, session_id: i32, message_id: String) {
+        if let Some(model) = scheduled_sessions::Entity::find_by_id(session_id)
+            .one(&self.connection)
+            .await
+            .unwrap()
+        {
+            let mut active_model: scheduled_sessions::ActiveModel = model.into();
+            active_model.announcement_message_id = Set(Some(message_id));
+            active_model.update(&self.connection).await.unwrap();
+        }
+    }
+
+    async fn get_session_by_announcement_message(
+        &self,
+        message_id: &str,
+    ) -> Option<ScheduledSession> {
+        scheduled_sessions::Entity::find()
+            .filter(scheduled_sessions::Column::AnnouncementMessageId.eq(message_id))
+            .one(&self.connection)
+            .await
+            .unwrap()
+            .map(to_scheduled_session)
+    }
+
+    async fn get_session(&self, session_id: i32) -> Option<ScheduledSession> {
+        scheduled_sessions::Entity::find_by_id(session_id)
+            .one(&self.connection)
+            .await
+            .unwrap()
+            .map(to_scheduled_session)
+    }
+
+    async fn list_pending_sessions(&self) -> Vec<ScheduledSession> {
+        scheduled_sessions::Entity::find()
+            .filter(scheduled_sessions::Column::Status.eq("pending"))
+            .all(&self.connection)
+            .await
+            .unwrap()
+            .into_iter()
+            .map(to_scheduled_session)
+            .collect()
+    }
+
+    async fn mark_reminder_sent(&self, session_id: i32) {
+        if let Some(model) = scheduled_sessions::Entity::find_by_id(session_id)
+            .one(&self.connection)
+            .await
+            .unwrap()
+        {
+            let mut active_model: scheduled_sessions::ActiveModel = model.into();
+            active_model.reminder_sent = Set(true);
+            active_model.update(&self.connection).await.unwrap();
+        }
+    }
+
+    async fn mark_session_started(&self, session_id: i32) {
+        if let Some(model) = scheduled_sessions::Entity::find_by_id(session_id)
+            .one(&self.connection)
+            .await
+            .unwrap()
+        {
+            let mut active_model: scheduled_sessions::ActiveModel = model.into();
+            active_model.status = Set("started".to_string());
+            active_model.update(&self.connection).await.unwrap();
+        }
+    }
+
+    async fn add_subscriber(&self, session_id: i32, user_id: String) {
+        let existing = scheduled_session_subscribers::Entity::find()
+            .filter(scheduled_session_subscribers::Column::SessionId.eq(session_id))
+            .filter(scheduled_session_subscribers::Column::UserId.eq(user_id.clone()))
+            .one(&self.connection)
+            .await
+            .unwrap();
+        if existing.is_some() {
+            return;
+        }
+        let new_subscriber = scheduled_session_subscribers::ActiveModel {
+            id: NotSet,
+            session_id: Set(session_id),
+            user_id: Set(user_id),
+        };
+        new_subscriber.insert(&self.connection).await.unwrap();
+    }
+
+    async fn remove_subscriber(&self, session_id: i32, user_id: String) {
+        scheduled_session_subscribers::Entity::delete_many()
+            .filter(scheduled_session_subscribers::Column::SessionId.eq(session_id))
+            .filter(scheduled_session_subscribers::Column::UserId.eq(user_id))
+            .exec(&self.connection)
+            .await
+            .unwrap();
+    }
+
+    async fn get_subscribers(&self, session_id: i32) -> Vec<String> {
+        scheduled_session_subscribers::Entity::find()
+            .filter(scheduled_session_subscribers::Column::SessionId.eq(session_id))
+            .all(&self.connection)
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|m| m.user_id)
+            .collect()
     }
 }

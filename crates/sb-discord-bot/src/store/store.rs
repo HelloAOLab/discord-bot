@@ -33,9 +33,55 @@ pub trait VotdStore: Send + Sync {
     async fn set_server_votd(&self, guild_id: &str, book_3c_id: &str, chapter: i64, verse: i64);
 }
 
-pub trait Store: UserPref + ServerPref + DailyCache + VotdStore {}
+/// A scheduled `/launchsession` reading session, decoupled from the sea-orm entity.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ScheduledSession {
+    pub id: i32,
+    pub session_uuid: String,
+    pub guild_id: String,
+    pub channel_id: String,
+    pub creator_id: String,
+    pub book_id: String,
+    pub chapter: i64,
+    pub announcement_message_id: Option<String>,
+    pub scheduled_at: i64,
+    pub reminder_minutes: Option<i64>,
+    pub reminder_sent: bool,
+    pub status: String,
+}
 
-impl<T: UserPref + ServerPref + DailyCache + VotdStore> Store for T {}
+#[async_trait]
+pub trait SessionStore: Send + Sync {
+    #[allow(clippy::too_many_arguments)]
+    async fn create_scheduled_session(
+        &self,
+        session_uuid: String,
+        guild_id: String,
+        channel_id: String,
+        creator_id: String,
+        book_id: String,
+        chapter: i64,
+        scheduled_at: i64,
+        reminder_minutes: Option<i64>,
+    ) -> ScheduledSession;
+    async fn set_session_announcement_message(&self, session_id: i32, message_id: String);
+    async fn get_session_by_announcement_message(
+        &self,
+        message_id: &str,
+    ) -> Option<ScheduledSession>;
+    async fn get_session(&self, session_id: i32) -> Option<ScheduledSession>;
+    /// Returns all sessions still awaiting their start job (`status == "pending"`).
+    async fn list_pending_sessions(&self) -> Vec<ScheduledSession>;
+    async fn mark_reminder_sent(&self, session_id: i32);
+    async fn mark_session_started(&self, session_id: i32);
+    async fn add_subscriber(&self, session_id: i32, user_id: String);
+    async fn remove_subscriber(&self, session_id: i32, user_id: String);
+    async fn get_subscribers(&self, session_id: i32) -> Vec<String>;
+}
+
+pub trait Store: UserPref + ServerPref + DailyCache + VotdStore + SessionStore {}
+
+impl<T: UserPref + ServerPref + DailyCache + VotdStore + SessionStore> Store for T {}
 
 pub struct StoreKey;
 impl TypeMapKey for StoreKey {

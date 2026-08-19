@@ -128,6 +128,23 @@ pub fn get_passage_url(
     url
 }
 
+/// Builds a seedbible.org link to a shared collaborative session: putting a
+/// UUID in `sessionId` auto-creates and joins everyone using it into the same
+/// live session, while each person's `translation`/`lang` stay personalized.
+pub fn get_session_url(
+    session_id: &str,
+    book: &str,
+    chapter: &str,
+    translation: &str,
+    lang: &str,
+) -> String {
+    format!(
+        "{}&sessionId={}",
+        get_passage_url(Some(book), Some(chapter), Some(translation), Some(lang)),
+        session_id
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -230,5 +247,15 @@ mod tests {
         assert!(url.contains("chapter=3"));
         assert!(url.contains("translation=BSB"));
         assert!(url.contains("lang=en"));
+    }
+
+    #[test]
+    fn get_session_url_includes_session_id_and_passage_params() {
+        let url = get_session_url("abc-123", "JHN", "3", "BSB", "en");
+        assert!(url.contains("book=JHN"));
+        assert!(url.contains("chapter=3"));
+        assert!(url.contains("translation=BSB"));
+        assert!(url.contains("lang=en"));
+        assert!(url.contains("sessionId=abc-123"));
     }
 }

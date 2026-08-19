@@ -5,6 +5,8 @@ pub mod sqlite;
 pub mod store;
 pub mod entity {
     pub mod kv;
+    pub mod scheduled_session_subscribers;
+    pub mod scheduled_sessions;
     pub mod server_prefs;
     pub mod translation_support_item;
     pub mod translations;
