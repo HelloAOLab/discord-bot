@@ -6,7 +6,10 @@ use crate::{
     store::store::Store,
 };
 
-pub async fn create_poise_framework(store: Arc<dyn Store>) -> poise::Framework<Data, Error> {
+pub async fn create_poise_framework(
+    store: Arc<dyn Store>,
+    scheduler: tokio_cron_scheduler::JobScheduler,
+) -> poise::Framework<Data, Error> {
     poise::Framework::builder()
         .options(poise::FrameworkOptions {
             commands: slash_commands::all_commands(),
@@ -19,7 +22,7 @@ pub async fn create_poise_framework(store: Arc<dyn Store>) -> poise::Framework<D
         .setup(|ctx, _ready, framework: &poise::Framework<Data, Error>| {
             Box::pin(async move {
                 poise::builtins::register_globally(ctx, &framework.options().commands).await?;
-                Ok(Data { store })
+                Ok(Data { store, scheduler })
             })
         })
         .build()

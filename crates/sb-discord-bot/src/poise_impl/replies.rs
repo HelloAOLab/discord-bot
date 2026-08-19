@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use poise::CreateReply;
 use rand::{Rng, seq::SliceRandom};
 use serenity::all::{
-    Colour, CreateActionRow, CreateButton, CreateEmbed, CreateEmbedFooter, RoleId,
+    Colour, CreateActionRow, CreateButton, CreateEmbed, CreateEmbedFooter, CreateMessage, RoleId,
 };
 
 use crate::{
@@ -533,6 +533,77 @@ pub fn build_open_reply(
     }
 }
 
+pub fn build_invalid_when_reply(message: &str) -> CreateReply {
+    CreateReply {
+        content: Some(message.to_string()),
+        ephemeral: Some(true),
+        ..Default::default()
+    }
+}
+
+pub fn build_invalid_reminder_reply(message: &str) -> CreateReply {
+    CreateReply {
+        content: Some(message.to_string()),
+        ephemeral: Some(true),
+        ..Default::default()
+    }
+}
+
+/// Ephemeral reply for `/launchsession` when scheduled for "now": hands the
+/// creator their personalized session link immediately, with no announcement
+/// or subscriber flow.
+pub fn build_launch_now_reply(book: &BibleBooks, chapter: i64, url: &str) -> CreateReply {
+    CreateReply {
+        embeds: vec![
+            CreateEmbed::default()
+                .title(format!("📖 Session ready: {} {}", book, chapter))
+                .color(Colour::from_rgb(178, 255, 237)),
+        ],
+        components: Some(vec![CreateActionRow::Buttons(vec![
+            CreateButton::new_link(url).label("Join →"),
+        ])]),
+        ephemeral: Some(true),
+        ..Default::default()
+    }
+}
+
+/// The public channel announcement for a scheduled (non-"now") session,
+/// inviting others to react with 📖 to subscribe.
+pub fn build_session_announcement_message(
+    book: &BibleBooks,
+    chapter: i64,
+    scheduled_at: i64,
+    creator_id: &str,
+) -> CreateMessage {
+    let embed = CreateEmbed::default()
+        .title(format!("📖 Session scheduled: {} {}", book, chapter))
+        .description(format!(
+            "Starting <t:{scheduled_at}:F> (<t:{scheduled_at}:R>), started by <@{creator_id}>.\n\nReact with 📖 to subscribe and get your own personalized link (in your preferred language/translation) when the session starts.",
+        ))
+        .color(Colour::from_rgb(178, 255, 237));
+    CreateMessage::new().embed(embed)
+}
+
+/// Ephemeral confirmation sent back to the creator after a session is scheduled.
+pub fn build_session_scheduled_reply(
+    book: &BibleBooks,
+    chapter: i64,
+    scheduled_at: i64,
+) -> CreateReply {
+    CreateReply {
+        embeds: vec![
+            CreateEmbed::default()
+                .title(format!("Session scheduled: {} {}", book, chapter))
+                .description(format!(
+                    "Starting <t:{scheduled_at}:F> (<t:{scheduled_at}:R>)."
+                ))
+                .color(Colour::new(2736712)),
+        ],
+        ephemeral: Some(true),
+        ..Default::default()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -947,5 +1018,49 @@ mod tests {
         let reply = build_open_reply(Some(&BibleBooks::John), Some(3), "BSB", "en");
         assert_eq!(embed_description(&reply, 0), "Open John 3 in Seed Bible:");
         assert!(reply.components.is_some());
+    }
+
+    #[test]
+    fn launch_now_reply_is_ephemeral_with_join_link() {
+        let reply = build_launch_now_reply(&BibleBooks::John, 3, "https://example.com/join");
+        assert_eq!(reply.ephemeral, Some(true));
+        assert!(embed_title(&reply, 0).contains("John 3"));
+        assert!(reply.components.is_some());
+    }
+
+    #[test]
+    fn session_announcement_message_mentions_creator_and_react_prompt() {
+        let message = build_session_announcement_message(&BibleBooks::John, 3, 1_000_000, "u1");
+        let json = serde_json::to_value(&message).unwrap();
+        let embed = &json["embeds"][0];
+        assert!(embed["title"].as_str().unwrap().contains("John 3"));
+        assert!(embed["description"].as_str().unwrap().contains("<@u1>"));
+        assert!(
+            embed["description"]
+                .as_str()
+                .unwrap()
+                .contains("React with 📖")
+        );
+    }
+
+    #[test]
+    fn session_scheduled_reply_is_ephemeral() {
+        let reply = build_session_scheduled_reply(&BibleBooks::John, 3, 1_000_000);
+        assert_eq!(reply.ephemeral, Some(true));
+        assert!(embed_title(&reply, 0).contains("John 3"));
+    }
+
+    #[test]
+    fn invalid_when_reply_carries_message() {
+        let reply = build_invalid_when_reply("bad time");
+        assert_eq!(reply.content, Some("bad time".to_string()));
+        assert_eq!(reply.ephemeral, Some(true));
+    }
+
+    #[test]
+    fn invalid_reminder_reply_carries_message() {
+        let reply = build_invalid_reminder_reply("bad reminder");
+        assert_eq!(reply.content, Some("bad reminder".to_string()));
+        assert_eq!(reply.ephemeral, Some(true));
     }
 }

@@ -1,4 +1,6 @@
-use poise::CreateReply;
+use std::sync::Arc;
+
+use poise::{CreateReply, Modal};
 use serenity::all::{Colour, CreateEmbed, RoleId};
 use strum::IntoEnumIterator;
 
@@ -13,16 +15,24 @@ use crate::{
         replies::{
             apply_daily_verse_role, apply_set_votd, apply_translation_choice,
             build_chapter_replies, build_end_verse_not_found_reply, build_help_reply,
-            build_invalid_chapter_number_reply, build_invalid_translation_reply,
-            build_invalid_votd_book_reply, build_no_books_reply, build_no_verses_reply,
-            build_no_votd_set_reply, build_open_reply, build_role_not_found_reply,
-            build_translations_reply, build_verse_not_found_reply, build_verse_range_replies,
-            build_verse_reply, build_verse_unavailable_reply, build_votd_reply, chapter_has_verse,
-            eligible_books, find_verse, format_verse_range_content, not_in_server_reply,
-            pick_random_book, pick_random_chapter, pick_random_verse, validate_verse_range,
-            verse_numbers, verses_in_content, verses_in_range,
+            build_invalid_chapter_number_reply, build_invalid_reminder_reply,
+            build_invalid_translation_reply, build_invalid_votd_book_reply,
+            build_invalid_when_reply, build_launch_now_reply, build_no_books_reply,
+            build_no_verses_reply, build_no_votd_set_reply, build_open_reply,
+            build_role_not_found_reply, build_session_announcement_message,
+            build_session_scheduled_reply, build_translations_reply, build_verse_not_found_reply,
+            build_verse_range_replies, build_verse_reply, build_verse_unavailable_reply,
+            build_votd_reply, chapter_has_verse, eligible_books, find_verse,
+            format_verse_range_content, not_in_server_reply, pick_random_book, pick_random_chapter,
+            pick_random_verse, validate_verse_range, verse_numbers, verses_in_content,
+            verses_in_range,
         },
-        types::{Context, Error},
+        types::{AppContext, Context, Error},
+    },
+    session::{
+        modal::LaunchSessionModal,
+        scheduler::register_session_jobs,
+        time_parse::{parse_reminder_minutes, parse_when},
     },
     store::{
         bibleapi::{ChapterItem, get_chapter},
@@ -30,7 +40,9 @@ use crate::{
         curated::random_curated_verse,
         valid_cache::{get_all_book_chapters, get_chapter_count, is_valid_translation},
     },
-    util::format::{format_chapter_content, get_passage_url, split_into_embed_chunks},
+    util::format::{
+        format_chapter_content, get_passage_url, get_session_url, split_into_embed_chunks,
+    },
 };
 
 async fn autocomplete_book<'a>(
@@ -574,6 +586,127 @@ pub async fn verse(
     Ok(())
 }
 
+// Opens the session-builder modal, then either hands the creator an
+// immediate personalized link ("now") or persists + announces a scheduled
+// session that others can subscribe to via a 📖 reaction.
+#[poise::command(
+    slash_command,
+    description_localized("en-US", "Launch or schedule a shared Seed Bible session.")
+)]
+pub async fn launchsession(ctx: AppContext<'_>) -> Result<(), Error> {
+    let Some(modal_data) = LaunchSessionModal::execute(ctx).await? else {
+        // User closed the modal without submitting.
+        return Ok(());
+    };
+    let base_ctx: Context = ctx.into();
+
+    let Some(book) = parse_book(&base_ctx, modal_data.book.trim()).await? else {
+        return Ok(());
+    };
+
+    let Ok(chapter) = modal_data.chapter.trim().parse::<i64>() else {
+        base_ctx
+            .send(build_invalid_chapter_number_reply(&modal_data.chapter))
+            .await?;
+        return Ok(());
+    };
+
+    let translation = resolve_translation(&base_ctx, None).await;
+    if !validate_chapter(&base_ctx, &book, &translation, chapter).await? {
+        return Ok(());
+    }
+
+    let now = chrono::Utc::now().timestamp();
+    let scheduled_at = match parse_when(&modal_data.when, now) {
+        Ok(t) => t,
+        Err(message) => {
+            base_ctx.send(build_invalid_when_reply(&message)).await?;
+            return Ok(());
+        }
+    };
+    let reminder_minutes = match parse_reminder_minutes(modal_data.reminder_minutes.as_deref()) {
+        Ok(m) => m,
+        Err(message) => {
+            base_ctx
+                .send(build_invalid_reminder_reply(&message))
+                .await?;
+            return Ok(());
+        }
+    };
+
+    // "now" (or effectively now): skip the whole announce/subscribe/scheduler
+    // flow and just hand the creator their own personalized link immediately.
+    if scheduled_at <= now + 5 {
+        let lang = resolve_lang(&base_ctx, None).await;
+        let session_uuid = uuid::Uuid::new_v4().to_string();
+        let url = get_session_url(
+            &session_uuid,
+            book.get_3c_id(),
+            &chapter.to_string(),
+            &translation,
+            &lang,
+        );
+        base_ctx
+            .send(build_launch_now_reply(&book, chapter, &url))
+            .await?;
+        return Ok(());
+    }
+
+    let Some(guild_id) = base_ctx.guild_id() else {
+        base_ctx.send(not_in_server_reply()).await?;
+        return Ok(());
+    };
+    let channel_id = base_ctx.channel_id();
+    let creator_id = base_ctx.author().id.to_string();
+    let session_uuid = uuid::Uuid::new_v4().to_string();
+
+    let session = base_ctx
+        .data()
+        .store
+        .create_scheduled_session(
+            session_uuid,
+            guild_id.to_string(),
+            channel_id.to_string(),
+            creator_id.clone(),
+            book.get_3c_id().to_string(),
+            chapter,
+            scheduled_at,
+            reminder_minutes,
+        )
+        .await;
+    base_ctx
+        .data()
+        .store
+        .add_subscriber(session.id, creator_id.clone())
+        .await;
+
+    let announcement =
+        build_session_announcement_message(&book, chapter, scheduled_at, &creator_id);
+    let msg = channel_id
+        .send_message(base_ctx.http(), announcement)
+        .await?;
+    msg.react(base_ctx.http(), '📖').await?;
+    base_ctx
+        .data()
+        .store
+        .set_session_announcement_message(session.id, msg.id.to_string())
+        .await;
+
+    register_session_jobs(
+        &base_ctx.data().scheduler,
+        Arc::clone(&base_ctx.serenity_context().http),
+        Arc::clone(&base_ctx.data().store),
+        &session,
+        now,
+    )
+    .await?;
+
+    base_ctx
+        .send(build_session_scheduled_reply(&book, chapter, scheduled_at))
+        .await?;
+    Ok(())
+}
+
 pub fn all_commands() -> Vec<poise::Command<Data, Error>> {
     vec![
         help(),
@@ -589,5 +722,6 @@ pub fn all_commands() -> Vec<poise::Command<Data, Error>> {
         random(),
         chapter(),
         verse(),
+        launchsession(),
     ]
 }
