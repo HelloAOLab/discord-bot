@@ -1,6 +1,7 @@
 pub mod discord_util;
 pub mod handler;
 pub mod poise_impl;
+pub mod scheduler;
 pub mod store;
 pub mod util;
 
@@ -42,5 +43,9 @@ async fn main() {
         let mut data = client.data.write().await;
         data.insert::<StoreKey>(Arc::clone(&store));
     }
+
+    let http = client.http.clone();
+    tokio::spawn(scheduler::run(Arc::clone(&store), http));
+
     start_client(client).await;
 }

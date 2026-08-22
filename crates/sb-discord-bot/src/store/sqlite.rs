@@ -11,9 +11,9 @@ use serenity::{async_trait, model::user};
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
 
 use crate::store::{
-    entity::{kv, server_prefs, user_prefs},
-    store::{DailyCache, ServerPref, UserPref, VotdStore},
-    valid_cache::{get_valid_translations, is_valid_translation},
+    entity::{kv, server_prefs, session_subscribers, sessions, user_prefs},
+    store::{DailyCache, DueSession, ServerPref, SessionStore, UserPref, VotdStore},
+    valid_cache::get_valid_translations,
 };
 
 pub struct SqliteStore {
@@ -204,5 +204,110 @@ where
         active_model.insert(db).await.unwrap();
     } else {
         active_model.update(db).await.unwrap();
+    }
+}
+
+#[async_trait]
+impl SessionStore for SqliteStore {
+    async fn create_session(
+        &self,
+        guild_id: &str,
+        channel_id: &str,
+        message_id: &str,
+        scheduled_time: i64,
+        session_link: Option<&str>,
+    ) -> i32 {
+        let model = sessions::ActiveModel {
+            id: NotSet,
+            guild_id: Set(guild_id.to_string()),
+            channel_id: Set(channel_id.to_string()),
+            message_id: Set(message_id.to_string()),
+            scheduled_time: Set(scheduled_time),
+            notified: Set(false),
+            session_link: Set(session_link.map(str::to_string)),
+        };
+        model.insert(&self.connection).await.unwrap().id
+    }
+
+    async fn get_session_id_by_message_id(&self, message_id: &str) -> Option<i32> {
+        sessions::Entity::find_by_message_id(message_id)
+            .one(&self.connection)
+            .await
+            .unwrap()
+            .map(|s| s.id)
+    }
+
+    async fn add_subscriber(&self, session_id: i32, user_id: &str) {
+        use sea_orm::QueryFilter;
+        let existing = session_subscribers::Entity::find()
+            .filter(session_subscribers::Column::SessionId.eq(session_id))
+            .filter(session_subscribers::Column::UserId.eq(user_id))
+            .one(&self.connection)
+            .await
+            .unwrap();
+
+        if existing.is_none() {
+            session_subscribers::ActiveModel {
+                id: NotSet,
+                session_id: Set(session_id),
+                user_id: Set(user_id.to_string()),
+            }
+            .insert(&self.connection)
+            .await
+            .unwrap();
+        }
+    }
+
+    async fn remove_subscriber(&self, session_id: i32, user_id: &str) {
+        use sea_orm::{EntityTrait as _, QueryFilter};
+        session_subscribers::Entity::delete_many()
+            .filter(session_subscribers::Column::SessionId.eq(session_id))
+            .filter(session_subscribers::Column::UserId.eq(user_id))
+            .exec(&self.connection)
+            .await
+            .unwrap();
+    }
+
+    async fn get_subscribers(&self, session_id: i32) -> Vec<String> {
+        use sea_orm::QueryFilter;
+        session_subscribers::Entity::find()
+            .filter(session_subscribers::Column::SessionId.eq(session_id))
+            .all(&self.connection)
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|s| s.user_id)
+            .collect()
+    }
+
+    async fn get_due_sessions(&self, now: i64) -> Vec<DueSession> {
+        use sea_orm::QueryFilter;
+        sessions::Entity::find()
+            .filter(sessions::Column::ScheduledTime.lte(now))
+            .filter(sessions::Column::Notified.eq(false))
+            .all(&self.connection)
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|s| DueSession {
+                id: s.id,
+                channel_id: s.channel_id,
+                message_id: s.message_id,
+                scheduled_time: s.scheduled_time,
+                session_link: s.session_link,
+            })
+            .collect()
+    }
+
+    async fn mark_session_notified(&self, session_id: i32) {
+        if let Some(session) = sessions::Entity::find_by_id(session_id)
+            .one(&self.connection)
+            .await
+            .unwrap()
+        {
+            let mut active: sessions::ActiveModel = session.into();
+            active.notified = Set(true);
+            active.update(&self.connection).await.unwrap();
+        }
     }
 }

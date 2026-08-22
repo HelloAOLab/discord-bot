@@ -1,9 +1,9 @@
-use poise::CreateReply;
-use serenity::all::{Colour, CreateEmbed, CreateEmbedFooter, RoleId};
+use poise::{CreateReply, Modal};
+use serenity::all::{Colour, CreateEmbed, CreateEmbedFooter, ReactionType, RoleId};
 use strum::IntoEnumIterator;
 
-use rand::seq::SliceRandom;
 use rand::Rng;
+use rand::seq::SliceRandom;
 
 use crate::{
     discord_util::user::user_is_admin,
@@ -13,12 +13,14 @@ use crate::{
         types::{Context, Error},
     },
     store::{
-        bibleapi::{get_chapter, ChapterItem},
+        bibleapi::{ChapterItem, get_chapter},
         contract::{BibleBooks, Translations},
         curated::random_curated_verse,
         valid_cache::{get_all_book_chapters, get_chapter_count, is_valid_translation},
     },
-    util::format::{format_chapter_content, format_verse_content, get_passage_url, split_into_embed_chunks},
+    util::format::{
+        format_chapter_content, format_verse_content, get_passage_url, split_into_embed_chunks,
+    },
 };
 
 async fn autocomplete_book<'a>(
@@ -239,7 +241,8 @@ pub async fn votd(
         return Ok(());
     };
     let store = &ctx.data().store;
-    let Some((book_3c_id, chapter, verse_num)) = store.get_server_votd(&guild_id.to_string()).await else {
+    let Some((book_3c_id, chapter, verse_num)) = store.get_server_votd(&guild_id.to_string()).await
+    else {
         ctx.send(CreateReply {
             embeds: vec![
                 CreateEmbed::default()
@@ -293,7 +296,10 @@ pub async fn votd(
     ctx.send(CreateReply {
         embeds: vec![
             CreateEmbed::default()
-                .title(format!("Verse of the Day — {} {}:{} ({})", book, chapter, verse_data.number, translation))
+                .title(format!(
+                    "Verse of the Day — {} {}:{} ({})",
+                    book, chapter, verse_data.number, translation
+                ))
                 .description(format_verse_content(&verse_data))
                 .color(Colour::from_rgb(178, 255, 237)),
         ],
@@ -329,19 +335,28 @@ pub async fn setvotd(
         .await?;
         return Ok(());
     };
-    let Some(book) = parse_book(&ctx, &book).await? else { return Ok(()); };
+    let Some(book) = parse_book(&ctx, &book).await? else {
+        return Ok(());
+    };
     let translation = resolve_translation(&ctx, None).await;
-    if !validate_chapter(&ctx, &book, &translation, chapter).await? { return Ok(()); }
+    if !validate_chapter(&ctx, &book, &translation, chapter).await? {
+        return Ok(());
+    }
     let response = get_chapter(&translation, &book, chapter).await?;
-    let verse_exists = response.chapter.content.iter().any(|item| {
-        matches!(item, ChapterItem::Verse(v) if v.number == verse)
-    });
+    let verse_exists = response
+        .chapter
+        .content
+        .iter()
+        .any(|item| matches!(item, ChapterItem::Verse(v) if v.number == verse));
     if !verse_exists {
         ctx.send(CreateReply {
             embeds: vec![
                 CreateEmbed::default()
                     .title("Verse not found")
-                    .description(format!("{} {} does not have a verse {}.", book, chapter, verse))
+                    .description(format!(
+                        "{} {} does not have a verse {}.",
+                        book, chapter, verse
+                    ))
                     .color(Colour::new(16730184)),
             ],
             ..Default::default()
@@ -349,7 +364,10 @@ pub async fn setvotd(
         .await?;
         return Ok(());
     }
-    ctx.data().store.set_server_votd(&guild_id.to_string(), book.get_3c_id(), chapter, verse).await;
+    ctx.data()
+        .store
+        .set_server_votd(&guild_id.to_string(), book.get_3c_id(), chapter, verse)
+        .await;
     ctx.send(CreateReply {
         embeds: vec![
             CreateEmbed::default()
@@ -385,7 +403,10 @@ pub async fn truerandom(
             embeds: vec![
                 CreateEmbed::default()
                     .title("No books found")
-                    .description(format!("Could not load books for translation {}.", translation))
+                    .description(format!(
+                        "Could not load books for translation {}.",
+                        translation
+                    ))
                     .color(Colour::new(16730184)),
             ],
             ..Default::default()
@@ -395,9 +416,18 @@ pub async fn truerandom(
     };
     let chapter = rand::thread_rng().gen_range(1..=*max_chapters);
     let response = get_chapter(&translation, book, chapter).await?;
-    let verses: Vec<_> = response.chapter.content.into_iter().filter_map(|item| {
-        if let ChapterItem::Verse(v) = item { Some(v) } else { None }
-    }).collect();
+    let verses: Vec<_> = response
+        .chapter
+        .content
+        .into_iter()
+        .filter_map(|item| {
+            if let ChapterItem::Verse(v) = item {
+                Some(v)
+            } else {
+                None
+            }
+        })
+        .collect();
     let Some(verse_data) = verses.choose(&mut rand::thread_rng()) else {
         ctx.send(CreateReply {
             embeds: vec![
@@ -414,7 +444,10 @@ pub async fn truerandom(
     ctx.send(CreateReply {
         embeds: vec![
             CreateEmbed::default()
-                .title(format!("{} {}:{} ({})", book, chapter, verse_data.number, translation))
+                .title(format!(
+                    "{} {}:{} ({})",
+                    book, chapter, verse_data.number, translation
+                ))
                 .description(format_verse_content(verse_data))
                 .color(Colour::from_rgb(178, 255, 237)),
         ],
@@ -460,7 +493,11 @@ pub async fn random(
     let response = get_chapter(&translation, &verse_ref.book, verse_ref.chapter).await?;
     let found = response.chapter.content.into_iter().find_map(|item| {
         if let ChapterItem::Verse(v) = item {
-            if v.number == verse_ref.verse { Some(v) } else { None }
+            if v.number == verse_ref.verse {
+                Some(v)
+            } else {
+                None
+            }
         } else {
             None
         }
@@ -511,9 +548,13 @@ pub async fn chapter(
     translation: Option<String>,
 ) -> Result<(), Error> {
     ctx.defer().await?;
-    let Some(book) = parse_book(&ctx, &book).await? else { return Ok(()); };
+    let Some(book) = parse_book(&ctx, &book).await? else {
+        return Ok(());
+    };
     let translation = resolve_translation(&ctx, translation.as_deref()).await;
-    if !validate_chapter(&ctx, &book, &translation, chapter).await? { return Ok(()); }
+    if !validate_chapter(&ctx, &book, &translation, chapter).await? {
+        return Ok(());
+    }
     let response = get_chapter(&translation, &book, chapter).await?;
     let content = format_chapter_content(&response.chapter);
     let chunks = split_into_embed_chunks(&content);
@@ -575,9 +616,13 @@ pub async fn verse(
         }
     }
 
-    let Some(book) = parse_book(&ctx, &book).await? else { return Ok(()); };
+    let Some(book) = parse_book(&ctx, &book).await? else {
+        return Ok(());
+    };
     let translation = resolve_translation(&ctx, translation.as_deref()).await;
-    if !validate_chapter(&ctx, &book, &translation, chapter).await? { return Ok(()); }
+    if !validate_chapter(&ctx, &book, &translation, chapter).await? {
+        return Ok(());
+    }
     let response = get_chapter(&translation, &book, chapter).await?;
 
     let Some(end) = end_verse else {
@@ -593,7 +638,10 @@ pub async fn verse(
                 embeds: vec![
                     CreateEmbed::default()
                         .title("Verse not found")
-                        .description(format!("{} {} does not have a verse {}.", book, chapter, verse))
+                        .description(format!(
+                            "{} {} does not have a verse {}.",
+                            book, chapter, verse
+                        ))
                         .color(Colour::new(16730184)),
                 ],
                 ..Default::default()
@@ -604,7 +652,10 @@ pub async fn verse(
         ctx.send(CreateReply {
             embeds: vec![
                 CreateEmbed::default()
-                    .title(format!("{} {}:{} ({})", book, chapter, verse_data.number, translation))
+                    .title(format!(
+                        "{} {}:{} ({})",
+                        book, chapter, verse_data.number, translation
+                    ))
                     .description(format_verse_content(&verse_data))
                     .color(Colour::from_rgb(178, 255, 237)),
             ],
@@ -614,9 +665,18 @@ pub async fn verse(
         return Ok(());
     };
 
-    let verses_in_chapter: Vec<_> = response.chapter.content.into_iter().filter_map(|item| {
-        if let ChapterItem::Verse(v) = item { Some(v) } else { None }
-    }).collect();
+    let verses_in_chapter: Vec<_> = response
+        .chapter
+        .content
+        .into_iter()
+        .filter_map(|item| {
+            if let ChapterItem::Verse(v) = item {
+                Some(v)
+            } else {
+                None
+            }
+        })
+        .collect();
 
     let verse_numbers: Vec<i64> = verses_in_chapter.iter().map(|v| v.number).collect();
 
@@ -625,7 +685,10 @@ pub async fn verse(
             embeds: vec![
                 CreateEmbed::default()
                     .title("Verse not found")
-                    .description(format!("{} {} does not have a verse {}.", book, chapter, verse))
+                    .description(format!(
+                        "{} {} does not have a verse {}.",
+                        book, chapter, verse
+                    ))
                     .color(Colour::new(16730184)),
             ],
             ..Default::default()
@@ -639,7 +702,10 @@ pub async fn verse(
             embeds: vec![
                 CreateEmbed::default()
                     .title("End verse not found")
-                    .description(format!("{} {} does not have a verse {}.", book, chapter, end))
+                    .description(format!(
+                        "{} {} does not have a verse {}.",
+                        book, chapter, end
+                    ))
                     .color(Colour::new(16730184)),
             ],
             ..Default::default()
@@ -648,19 +714,30 @@ pub async fn verse(
         return Ok(());
     }
 
-    let range_verses: Vec<_> = verses_in_chapter.iter()
+    let range_verses: Vec<_> = verses_in_chapter
+        .iter()
         .filter(|v| v.number >= verse && v.number <= end)
         .collect();
 
-    let content: String = range_verses.iter().map(|v| {
-        format!("**{}** {}\n", v.number, format_verse_content(v))
-    }).collect();
+    let content: String = range_verses
+        .iter()
+        .map(|v| format!("**{}** {}\n", v.number, format_verse_content(v)))
+        .collect();
 
     let chunks = split_into_embed_chunks(&content);
     let total = chunks.len();
     for (i, chunk) in chunks.into_iter().enumerate() {
         let title = if total > 1 {
-            format!("{} {}:{}-{} ({}) ({}/{})", book, chapter, verse, end, translation, i + 1, total)
+            format!(
+                "{} {}:{}-{} ({}) ({}/{})",
+                book,
+                chapter,
+                verse,
+                end,
+                translation,
+                i + 1,
+                total
+            )
         } else {
             format!("{} {}:{}-{} ({})", book, chapter, verse, end, translation)
         };
@@ -678,6 +755,79 @@ pub async fn verse(
     Ok(())
 }
 
+#[derive(poise::Modal)]
+#[name = "Launch Session"]
+struct LaunchSessionModal {
+    #[name = "Session Time (UTC)"]
+    #[placeholder = "YYYY-MM-DD HH:MM  e.g. 2026-05-21 14:00"]
+    time: String,
+    #[name = "Session Link (optional)"]
+    #[placeholder = "https://..."]
+    session_link: Option<String>,
+}
+
+fn parse_session_time(input: &str) -> Option<i64> {
+    use chrono::NaiveDateTime;
+    let s = input.trim();
+    if let Ok(ms) = s.parse::<i64>() {
+        return Some(ms / 1000);
+    }
+    NaiveDateTime::parse_from_str(s, "%Y-%m-%d %H:%M:%S")
+        .or_else(|_| NaiveDateTime::parse_from_str(s, "%Y-%m-%d %H:%M"))
+        .ok()
+        .map(|dt| dt.and_utc().timestamp())
+}
+
+#[poise::command(
+    slash_command,
+    description_localized("en-US", "Schedule a session and collect bell-emoji RSVPs")
+)]
+pub async fn launchsession(
+    ctx: poise::ApplicationContext<'_, Data, Error>,
+) -> Result<(), Error> {
+    let Some(modal_data) = LaunchSessionModal::execute(ctx).await? else {
+        return Ok(());
+    };
+
+    let scheduled_time = parse_session_time(&modal_data.time)
+        .ok_or("Invalid time — use YYYY-MM-DD HH:MM (UTC), e.g. 2026-05-21 14:00")?;
+
+    let mut description = format!(
+        "Session planned for <t:{scheduled_time}:F>\nReact with 🔔 to be notified when it starts!"
+    );
+    if let Some(ref link) = modal_data.session_link {
+        description.push_str(&format!("\n{link}"));
+    }
+
+    let embed = CreateEmbed::default()
+        .title("Session Planned")
+        .description(description)
+        .color(Colour::from_rgb(178, 255, 237));
+
+    let msg = ctx
+        .send(CreateReply::default().embed(embed))
+        .await?
+        .into_message()
+        .await?;
+
+    let store = &ctx.data().store;
+    let guild_id = ctx.guild_id().map(|g| g.to_string()).unwrap_or_default();
+    store
+        .create_session(
+            &guild_id,
+            &msg.channel_id.to_string(),
+            &msg.id.to_string(),
+            scheduled_time,
+            modal_data.session_link.as_deref(),
+        )
+        .await;
+
+    msg.react(ctx.serenity_context(), ReactionType::Unicode("🔔".to_string()))
+        .await?;
+
+    Ok(())
+}
+
 pub fn all_commands() -> Vec<poise::Command<Data, Error>> {
     vec![
         help(),
@@ -691,5 +841,6 @@ pub fn all_commands() -> Vec<poise::Command<Data, Error>> {
         random(),
         chapter(),
         verse(),
+        launchsession(),
     ]
 }

@@ -1,6 +1,32 @@
 use serenity::{async_trait, prelude::TypeMapKey};
 use std::{collections::HashSet, sync::Arc};
 
+pub struct DueSession {
+    pub id: i32,
+    pub channel_id: String,
+    pub message_id: String,
+    pub scheduled_time: i64,
+    pub session_link: Option<String>,
+}
+
+#[async_trait]
+pub trait SessionStore: Send + Sync {
+    async fn create_session(
+        &self,
+        guild_id: &str,
+        channel_id: &str,
+        message_id: &str,
+        scheduled_time: i64,
+        session_link: Option<&str>,
+    ) -> i32;
+    async fn get_session_id_by_message_id(&self, message_id: &str) -> Option<i32>;
+    async fn add_subscriber(&self, session_id: i32, user_id: &str);
+    async fn remove_subscriber(&self, session_id: i32, user_id: &str);
+    async fn get_subscribers(&self, session_id: i32) -> Vec<String>;
+    async fn get_due_sessions(&self, now: i64) -> Vec<DueSession>;
+    async fn mark_session_notified(&self, session_id: i32);
+}
+
 #[async_trait]
 pub trait DailyCache: Send + Sync {
     async fn get_all_available_translations(&self) -> Option<&'static HashSet<String>>;
@@ -29,9 +55,9 @@ pub trait VotdStore: Send + Sync {
     async fn set_server_votd(&self, guild_id: &str, book_3c_id: &str, chapter: i64, verse: i64);
 }
 
-pub trait Store: UserPref + ServerPref + DailyCache + VotdStore {}
+pub trait Store: UserPref + ServerPref + DailyCache + VotdStore + SessionStore {}
 
-impl<T: UserPref + ServerPref + DailyCache + VotdStore> Store for T {}
+impl<T: UserPref + ServerPref + DailyCache + VotdStore + SessionStore> Store for T {}
 
 pub struct StoreKey;
 impl TypeMapKey for StoreKey {

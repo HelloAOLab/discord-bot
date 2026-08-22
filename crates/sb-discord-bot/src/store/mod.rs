@@ -4,6 +4,8 @@ pub mod store;
 pub mod entity {
     pub mod kv;
     pub mod server_prefs;
+    pub mod session_subscribers;
+    pub mod sessions;
     pub mod translation_support_item;
     pub mod translations;
     pub mod user_prefs;

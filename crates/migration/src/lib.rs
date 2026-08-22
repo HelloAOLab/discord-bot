@@ -12,6 +12,9 @@ impl MigratorTrait for Migrator {
             Box::new(m20260331_171609_create_kv::Migration),
             Box::new(m20260331_172229_add_daily_verse_role_to_servers::Migration),
             Box::new(m20260411_000000_add_votd_to_server_prefs::Migration),
+            Box::new(m20260520_000000_create_sessions::Migration),
+            Box::new(m20260520_000001_create_session_subscribers::Migration),
+            Box::new(m20260520_000002_add_session_link::Migration),
         ]
     }
 }
@@ -21,3 +24,6 @@ mod m20260330_064340_create_translation_support;
 mod m20260331_171609_create_kv;
 mod m20260331_172229_add_daily_verse_role_to_servers;
 mod m20260411_000000_add_votd_to_server_prefs;
+mod m20260520_000000_create_sessions;
+mod m20260520_000001_create_session_subscribers;
+mod m20260520_000002_add_session_link;
